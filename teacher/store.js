@@ -7,7 +7,63 @@ const clone=x=>JSON.parse(JSON.stringify(x)), same=(a,b)=>JSON.stringify(a)===JS
 const check=(ok,msg)=>{if(!ok)throw new Error(msg);};
 const variants=['A','B','C'],now=()=>new Date().toISOString();let serial=0;const uid=p=>`${p}-${Date.now()}-${++serial}`;
 function rowValue(r,line=1){const number=String(r.number??'').trim(),name=String(r.name??'').trim().replace(/\s+/g,' ');check(/^\d{4,20}$/.test(number),`${line}. satır: Öğrenci numarası 4–20 rakam olmalıdır.`);check(name.length&&name.length<=160&&!/[\x00-\x1f]/.test(name),`${line}. satır: Ad soyad gerekli ve en fazla 160 karakter olmalıdır.`);check(!r.variant||variants.includes(r.variant),`${line}. satır: Grup A, B veya C olmalıdır.`);return {number,name,...(r.variant?{variant:r.variant}:{})};}
-export function parseRoster(text){text=String(text).replace(/^\uFEFF/,'');let quote=false,first='';for(let i=0;i<text.length;i++){let c=text[i];if(c==='"'){if(quote&&text[i+1]==='"'){i++;continue;}quote=!quote;}if(!quote&&/[\r\n]/.test(c))break;if(!quote)first+=c;}const delimiter=first.includes('\t')?'\t':first.includes(';')?';':',';let cells=[],records=[],field='',quoted=false,line=1,start=1,errors=[];const end=()=>{cells.push(field);if(cells.some(x=>x.trim()))records.push({cells,line:start});cells=[];field='';};for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){field+='"';i++;}else if(!quoted&&field!==''){errors.push({line:start,message:'Tırnak biçimi geçersiz.'});field+=c;}else quoted=!quoted;}else if(!quoted&&c===delimiter){cells.push(field);field='';}else if(!quoted&&(c==='\n'||c==='\r')){if(c==='\r'&&text[i+1]==='\n')i++;end();line++;start=line;}else{field+=c;if(c==='\n')line++;}}end();if(quoted)errors.push({line:start,message:'Kapanmamış tırnak.'});const normalize=s=>s.trim().toLocaleLowerCase('tr-TR').replace(/[_-]/g,' ');if(records.length&&/^(öğrenci numarası|ogrenci numarasi|öğrenci no\.?|ogrenci no\.?|numara|number|student number|student id)$/.test(normalize(records[0].cells[0])))records.shift();const rows=[];for(const r of records){try{check(r.cells.length===2||r.cells.length===3,'Her satır numara, ad soyad ve isteğe bağlı grup içermelidir.');rows.push(rowValue({number:r.cells[0],name:r.cells[1],variant:r.cells[2]?.trim().toUpperCase()},r.line));}catch(e){errors.push({line:r.line,message:e.message});}}return {rows,errors};}
+export function parseRoster(text){
+  text=String(text).replace(/^\uFEFF/,'');
+  let quote=false,first='';
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c==='"'){if(quote&&text[i+1]==='"'){i++;continue;}quote=!quote;}
+    if(!quote&&/[\r\n]/.test(c))break;
+    if(!quote)first+=c;
+  }
+  const delimiter=first.includes('\t')?'\t':first.includes(';')?';':',';
+  let cells=[],records=[],field='',quoted=false,line=1,start=1,errors=[];
+  const end=()=>{cells.push(field);if(cells.some(x=>x.trim()))records.push({cells,line:start});cells=[];field='';};
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c==='"'){
+      if(quoted&&text[i+1]==='"'){field+='"';i++;}
+      else if(!quoted&&field!==''){errors.push({line:start,message:'Tırnak biçimi geçersiz.'});field+=c;}
+      else quoted=!quoted;
+    }else if(!quoted&&c===delimiter){cells.push(field);field='';}
+    else if(!quoted&&(c==='\n'||c==='\r')){
+      if(c==='\r'&&text[i+1]==='\n')i++;
+      end();line++;start=line;
+    }else{field+=c;if(c==='\n')line++;}
+  }
+  end();if(quoted)errors.push({line:start,message:'Kapanmamış tırnak.'});
+  const normalize=s=>s.trim().toLocaleLowerCase('tr-TR').replace(/[_-]/g,' ').replace(/\s+/g,' ');
+  const numberHeader=/^(öğrenci numarası|ogrenci numarasi|öğrenci no\.?|ogrenci no\.?|numara|number|student number|student id|no\.?)$/;
+  const surnameHeader=/^(soyad|soyadı|soyadi|soyisim|soyismi|last name|surname)$/;
+  const groupHeader=/^(grup|grubu|group|form|variant)$/;
+  let header=null;
+  if(records.length&&numberHeader.test(normalize(records[0].cells[0])))header=records.shift().cells.map(normalize);
+  const invalidLines=new Set(errors.map(error=>error.line)),rows=[];
+  for(const record of records){
+    if(invalidLines.has(record.line))continue;
+    try{
+      const values=record.cells.map(value=>value.trim());
+      // Excel may copy additional empty cells to the right of the selected data.
+      while(values.length>2&&!values[values.length-1])values.pop();
+      check(values.length>=2&&values.length<=4,'Numara ve ad soyad sütunlarını seçin; ad ile soyad ayrı sütunlarda da olabilir.');
+      const explicitGroup=header&&groupHeader.test(header[2]||'');
+      const explicitSurname=header&&surnameHeader.test(header[2]||'');
+      const legacyGroup=!explicitSurname&&values.length===3&&variants.includes(values[2].toUpperCase());
+      const separateNames=explicitSurname||(!explicitGroup&&!legacyGroup&&values.length>=3);
+      let name=values[1],variant;
+      if(separateNames){
+        check(values[1]&&values[2],'Ad ve soyad sütunlarının ikisi de dolu olmalıdır.');
+        name=values[1]+' '+values[2];
+        variant=values[3]?.toUpperCase();
+      }else{
+        check(values.length<=3,'Ad soyad sütunundan sonra yalnızca isteğe bağlı grup sütunu olabilir.');
+        variant=values[2]?.toUpperCase();
+      }
+      rows.push(rowValue({number:values[0],name,variant},record.line));
+    }catch(error){errors.push({line:record.line,message:error.message});}
+  }
+  return {rows,errors};
+}
 export function toCSV(rows){return '\uFEFF'+rows.map(row=>row.map(v=>{let s=String(v??'');if(/^\s*[=+@-]/.test(s)||/^[\t\r\n]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';}).join(';')).join('\r\n');}
 function validateAssignment(d,previous){check(d&&typeof d.title==='string'&&d.title.trim(),'Ödev başlığı gereklidir.');check(Array.isArray(d.variants)&&d.variants.length===3&&same(d.variants.map(v=>v.id).sort(),variants),'A, B ve C formları gereklidir.');const stable=x=>x.variants.map(v=>[v.id,v.questions.map(q=>[q.id,q.type,(q.items||[]).map(i=>i.id)])]);if(previous)check(d.homework_id===previous.homework_id&&same(stable(d),stable(previous)),'Ödev, soru ve madde kimlikleri değiştirilemez.');for(const v of d.variants){check(v.questions?.length===6,'Her form altı soru içermelidir.');let code=0,choice=0;const ids=new Set();for(const q of v.questions){check(!ids.has(q.id),'Soru kimlikleri benzersiz olmalıdır.');ids.add(q.id);check(q.title?.trim()&&(Array.isArray(q.prompt)?q.prompt.length&&q.prompt.every(p=>typeof p==='string'&&p.trim()):typeof q.prompt==='string'&&q.prompt.trim()),'Soru başlığı ve metni gereklidir.');check(Number.isFinite(q.points)&&q.points>0,'Soru puanı geçersiz.');check(Array.isArray(q.rubric)&&q.rubric.every(r=>Number.isFinite(r.points)&&r.points>=0)&&q.rubric.reduce((a,r)=>a+r.points,0)===q.points,'Rubrik puanları soru puanına eşit olmalıdır.');if(q.type==='code'){code+=q.points;for(const k of ['starter_code','solution_code','checks_code'])check(typeof q[k]==='string'&&q[k].trim(),'Başlangıç, çözüm ve kontrol kodu gereklidir.');}else{check(q.type==='choice_group'&&q.items?.length===3&&q.points===15,'İki grup üçer çoktan seçmeli madde içermelidir.');choice+=q.points;check(q.items.reduce((a,i)=>a+i.points,0)===q.points,'Madde puanları geçersiz.');for(const i of q.items){check(!ids.has(i.id)&&typeof i.prompt==='string'&&i.prompt.trim(),'Madde kimliği veya metni geçersiz.');ids.add(i.id);check(i.points===5,'Madde puanı 5 olmalıdır.');check(typeof i.explanation==='string'&&i.explanation.trim(),'Doğru cevap açıklaması gereklidir.');check(i.options?.length===4&&i.options.every(o=>typeof o.text==='string'&&o.text.trim())&&same(i.options.map(o=>o.id).sort(),['A','B','C','D'])&&new Set(i.options.map(o=>o.text.trim())).size===4&&i.options.filter(o=>o.id===i.correct_option).length===1,'Dört farklı seçenek ve tek doğru cevap gereklidir.');}}}check(v.questions.filter(q=>q.type==='code').length===4&&code===70&&choice===30,'Dört kod sorusu 70, altı seçim maddesi 30 puan olmalıdır.');}}
 export class TeacherStore{

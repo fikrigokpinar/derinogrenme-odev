@@ -1,0 +1,22 @@
+.student-feedback-dialog{width:min(690px,calc(100vw - 28px));max-height:90vh;padding:0;border:1px solid #dce7e4;border-radius:15px;color:#26444c;box-shadow:0 24px 75px #183c4433}
+.student-feedback-dialog::backdrop{background:#183a4677}
+.student-feedback-head,.student-feedback-foot{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:18px 24px;background:#fff}
+.student-feedback-head{border-bottom:1px solid #e2ece8}.student-feedback-head h2{margin:0;font-size:21px;letter-spacing:-.025em}
+.student-feedback-close{border:0;background:transparent;color:#6d888b;font-size:26px;cursor:pointer}
+.student-feedback-body{padding:0 24px 24px;overflow:auto;max-height:calc(90vh - 140px)}
+.student-feedback-foot{border-top:1px solid #e2ece8}.student-feedback-field{display:flex;flex-direction:column;gap:8px;margin-top:18px;font-size:13px;font-weight:750}
+.student-feedback-field input,.student-feedback-field select,.student-feedback-field textarea{width:100%;min-width:0;padding:12px;border:1px solid #d6e3df;border-radius:7px;background:#fff;color:#2a454d;font:inherit;font-size:14px;line-height:1.6}
+.student-feedback-field textarea{font-family:inherit;resize:vertical;min-height:130px;line-height:1.7}
+.student-feedback-field input:focus,.student-feedback-field select:focus,.student-feedback-field textarea:focus{outline:2px solid #76cbb3;outline-offset:2px}
+.student-feedback-help,.student-feedback-meta{font-size:12px;line-height:1.75;color:#6c8388;margin:12px 0}
+.student-feedback-count{text-align:right;font-size:11px;color:#78918d;margin:7px 0}.student-feedback-error{color:#a34036;font-size:13px;line-height:1.7;white-space:pre-wrap}
+.student-feedback-error:empty{display:none}.student-feedback-notice,.student-feedback-success{font-size:13px;line-height:1.7;padding:12px 15px;border-radius:8px;margin:16px 0;background:#fff7e6;color:#876425;border:1px solid #eee0bd}
+.student-feedback-success{background:#edf9f1;border-color:#cce7d7;color:#22674d}
+.student-feedback-history{margin-top:30px;border-top:1px solid #e0eae5;padding-top:18px}.student-feedback-history h3{font-size:16px;margin:0 0 15px}
+.student-feedback-item{border:1px solid #dfe8e4;border-radius:10px;padding:16px;margin-top:12px;background:#fbfdfc}
+.student-feedback-item-top{display:flex;align-items:flex-start;gap:10px;justify-content:space-between;font-size:13px}.student-feedback-status{font-size:11px;font-weight:750;white-space:nowrap;border-radius:20px;padding:4px 9px;background:#fff1d7;color:#886016}
+.student-feedback-status.reviewing{background:#e6f2fc;color:#346d96}.student-feedback-status.resolved{background:#e4f3e9;color:#38714e}
+.student-feedback-message{font-size:13px;line-height:1.8;color:#38565a;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0}
+.student-feedback-reply{margin-top:16px;padding:14px 16px;border-left:3px solid #4da58e;border-radius:0 8px 8px 0;background:#edf7f2}.student-feedback-reply h4{font-size:13px;margin:0;color:#216956}.student-feedback-reply .student-feedback-meta{margin:10px 0 0}
+.student-feedback-dialog[data-sending] .student-feedback-close{opacity:.5;cursor:wait}
+@media(max-width:540px){.student-feedback-head,.student-feedback-foot{padding:16px}.student-feedback-body{padding:0 16px 20px}.student-feedback-item-top{flex-wrap:wrap}}

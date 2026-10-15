@@ -1,0 +1,28 @@
+.student-guide{margin:0 0 24px;border:1px solid #cddfdb;border-radius:10px;background:#fff;overflow:hidden}
+.student-guide>summary{display:flex;align-items:center;gap:13px;padding:17px 19px;cursor:pointer;list-style:none;background:#f0f7f4;color:#205e52}
+.student-guide>summary::-webkit-details-marker{display:none}
+.student-guide>summary:hover{background:#e8f3ee}
+.student-guide>summary:focus-visible{outline:3px solid #229e88;outline-offset:-3px}
+.guide-icon{display:grid;place-items:center;flex:none;width:32px;height:32px;border:1px solid #a9d3c6;border-radius:9px;background:#fff;font-size:19px;font-weight:800}
+.guide-summary{display:grid;gap:4px;min-width:0}
+.guide-summary strong{font-size:14px;font-weight:800}
+.guide-summary>span{font-size:12px;line-height:1.6;color:#54796e}
+.guide-toggle{margin-left:auto;flex:none;font-size:23px;line-height:1}
+.guide-toggle::before{content:'+'}
+.student-guide[open] .guide-toggle::before{content:'−'}
+.student-guide[open]>summary{border-bottom:1px solid #d7e6df}
+.guide-body{padding:21px}
+.guide-rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:22px}
+.guide-rules>span{display:flex;flex-direction:column;gap:5px;padding:12px;border-radius:7px;background:#f4f8f7;color:#607c73;font-size:11px;line-height:1.5}
+.guide-rules strong{font-size:16px;color:#176b59}
+.guide-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 28px}
+.guide-sections section{min-width:0}
+.guide-sections h2{margin:0 0 10px;font-size:14px;line-height:1.6;color:#244a42}
+.guide-sections p{margin:0 0 10px;font-size:12px;line-height:1.85;color:#536f68}
+.guide-sections p:last-child{margin-bottom:0}
+.guide-sections strong{color:#244a42}
+.guide-sections .guide-deadline{padding:15px;border:1px solid #ecdfbd;border-radius:8px;background:#fffcf3}
+@media(max-width:900px){.guide-sections{grid-template-columns:1fr;gap:20px}.guide-sections section+section{border-top:1px solid #e4ece8;padding-top:18px}.guide-sections .guide-deadline{border:1px solid #ecdfbd;padding:15px}}
+@media(max-width:480px){.student-guide>summary{padding:14px 12px;gap:10px}.guide-body{padding:16px}.guide-rules{grid-template-columns:1fr;gap:6px}.guide-rules>span{flex-direction:row;align-items:baseline;gap:10px}.guide-rules strong{font-size:14px}.guide-summary>span{font-size:11px}}
+.guide-sections p{white-space:pre-line;overflow-wrap:anywhere}
+.guide-summary,.guide-rules{overflow-wrap:anywhere}

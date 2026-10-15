@@ -1,0 +1,120 @@
+{
+  "builder_repository_commit": "c87b392618b0ae88be444fddd06b07f28a368018",
+  "configuration": {
+    "build": {
+      "max_jobs": 3,
+      "maximum_wheel_mib": 80
+    },
+    "emdawnwebgpu": {
+      "archive_sha512": "ed15672c2c495a77c764929e6979f4e155bf8b9c46dee5b0f234f3208a708bc2b846d89eef345b725d03454b56d549531f48fc84ff2afe7627d14115893b0fb0",
+      "dawn_ref": "01940842b667a7812d0e4ca0ef4367fbec294241",
+      "release": "v20251002.162335"
+    },
+    "host_tools": {
+      "auditwheel_emscripten_version": "0.2.5",
+      "cmake_version": "3.27.9",
+      "ninja_version": "1.13.0",
+      "numpy_version": "2.4.3",
+      "packaging_version": "26.2",
+      "pyyaml_version": "6.0.3",
+      "requests_version": "2.34.2",
+      "setuptools_version": "81.0.0",
+      "six_version": "1.17.0",
+      "typing_extensions_version": "4.16.0",
+      "wheel_version": "0.47.0"
+    },
+    "lapack": {
+      "archive": "libopenblas-0.3.28.zip",
+      "library": "libopenblas.so",
+      "package": "libopenblas",
+      "sha256": "5489d82d8b00ddd3ba283055ba14e2a03d870f1b7e9c07873d6064a8c306ea4c",
+      "version": "0.3.28"
+    },
+    "pyodide": {
+      "build_version": "0.36.0",
+      "emscripten_version": "5.0.3",
+      "platform_tag": "pyemscripten_2026_0_wasm32",
+      "python_tag": "cp314",
+      "python_version": "3.14.2",
+      "version": "314.0.2"
+    },
+    "pytorch": {
+      "ref": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+      "repository": "https://github.com/pytorch/pytorch.git",
+      "version": "2.13.0+pyodide314.0.2.r7"
+    },
+    "release": {
+      "tag": "torch-2.13.0-pyodide-314.0.2-r7"
+    },
+    "torch_webgpu": {
+      "ref": "a4369ff0f61f4e58cbffb048cee85047b33dacba",
+      "repository": "https://github.com/jmaczan/torch-webgpu.git"
+    }
+  },
+  "inputs": {
+    "build_script_sha256": "9852e42e25533b619b3b0706c8c255a2d06d1f4316600590ce2ddbd1758c2922",
+    "cmake_hooks_tree_sha256": "fd011dbed6f03848a1db166ec6e845ce22aef827f2a86a78e2949c4c8a840bbd",
+    "patches": [
+      {
+        "filename": "0001-add-pyodide-runtime-guards.patch",
+        "sha256": "1242ee3b5fe19251eb1192dfb8e87913586742b7c8b0c1be93364a7d56e07f1c"
+      },
+      {
+        "filename": "0002-run-aten-schedulers-inline-on-wasm.patch",
+        "sha256": "9ee6be6293a4cec30f4849c43f8217fcac87166ea325b4562b3665a5ea1cd169"
+      },
+      {
+        "filename": "0003-use-a-host-protoc-when-cross-compiling.patch",
+        "sha256": "7eb842df6c285312648efe8ececa6c3a9d44838c7cfd6bce92ad519d294c1d88"
+      },
+      {
+        "filename": "0004-build-a-self-contained-webassembly-extension.patch",
+        "sha256": "ac3b0d5a8a9bcf199cc26f7484adc14bc21cdac4d8cac3e072c9d51360aa68f6"
+      },
+      {
+        "filename": "0005-use-the-pyodide-webassembly-exception-abi.patch",
+        "sha256": "c2e9006006ed52f08f451845b8d057f418c10a165e5473791b976326bc3c6480"
+      },
+      {
+        "filename": "0006-keep-python-bindings-enabled-for-pyodide.patch",
+        "sha256": "b855f031e4e5710bd8eb82434fb7943f1ffee1d83d7415f03b33215aa9f129cd"
+      },
+      {
+        "filename": "0007-stabilize-pyodide-imports-and-compiler-inputs.patch",
+        "sha256": "93ea00346907212a18da8fdc97b27945a91e9f0b50639c6b7e02832e34a48562"
+      },
+      {
+        "filename": "0008-use-pyodide-lapack.patch",
+        "sha256": "e5f5656235d471f3f3523a52e2b33bc554535d899c0b20ca5fdcab3317a1119e"
+      },
+      {
+        "filename": "0009-match-pyodide-f2c-subroutine-abi.patch",
+        "sha256": "10e26d1ccaf96224d8707f5e63353559adc88db3a330958e5f61031cf5647c59"
+      },
+      {
+        "filename": "0010-add-experimental-browser-webgpu-backend.patch",
+        "sha256": "0e8b5e1a273d65cc2b03547f3aa040182f87b074f8bbce66e6671589c0f2a12e"
+      },
+      {
+        "filename": "0011-write-torch-version-only-when-changed.patch",
+        "sha256": "39f11930521fd094fb966b30115f7a3c8d106584aa67aa02c23f665d994fe18c"
+      },
+      {
+        "filename": "0012-pass-project-hooks-before-cmake-project.patch",
+        "sha256": "a0f298f583235bd94f9ddbbe5de7585a3f7712045459f32488a95faa5dd57e3b"
+      }
+    ],
+    "project_webgpu_tree_sha256": "03a3d39b23e49b2a6b06959357e2cf0abcd1aa31e209e5a1ed343c10dfa43d6e",
+    "staging_script_sha256": "0a890f40c96c67d192cbbe69661f3d75da6c869f12ab4e7e01453cbd022041e3",
+    "vendor_trees": {
+      "emdawnwebgpu": "47d99a4d87fd7fe222339b6b77505822bf1f8727994e2f93d0845f2ea00eb446",
+      "torch-webgpu": "88838a3ef99437c82b287622486b29fa653ec1ff8974aeac132ae3135c44c609"
+    }
+  },
+  "schema_version": 1,
+  "wheel": {
+    "filename": "torch-2.13.0+pyodide314.0.2.r7-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+    "sha256": "074e99919ddc271a0e955c90dac57a0aab5569db5bcf3ae0941b75e11b8a5e69",
+    "size": 27304103
+  }
+}

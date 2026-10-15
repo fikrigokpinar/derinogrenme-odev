@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f7">
+  <title>Tensor Çalışmaları · Öğretmen Paneli</title>
+  <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="../usage-guide.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">T<span>·</span></span><span>Tensor <strong>Çalışmaları</strong></span></div>
+    <div class="topbar-right"><span class="course-tag">DERİN ÖĞRENME</span><button id="refresh-cloud" type="button" class="btn outline small" hidden>Yenile</button><a id="change-password" class="btn subtle small" href="../change-password.html" hidden>Şifre değiştir</a><button id="sign-out" type="button" class="btn subtle small" hidden>Çıkış yap</button><span class="avatar" aria-label="Öğretmen paneli">Ö</span></div>
+  </header>
+  <div id="mode-bar" class="preview-bar" style="display:none"><span class="preview-dot" aria-hidden="true"></span><strong>Yerel önizleme</strong><span class="preview-separator"></span><span>Kayıtlar bu tarayıcıda · Gerçek öğrenci hesabı yok</span></div>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="side-head"><p class="eyebrow">YÖNETİM ALANI</p><h2>Öğretmen paneli</h2><p>Dönem, ödev ve sonuçlar</p></div>
+      <nav aria-label="Panel bölümleri" id="nav">
+        <button type="button" data-tab="dashboard" class="nav-link active"><span>◫</span>Genel bakış</button>
+        <button type="button" data-tab="students" class="nav-link"><span>♙</span>Öğrenciler</button>
+        <button type="button" data-tab="assignments" class="nav-link"><span>▤</span>Ödevler</button>
+        <button type="button" data-tab="results" class="nav-link"><span>▦</span>Sonuçlar</button>
+        <button type="button" data-tab="feedback" class="nav-link"><span>◇</span>Geri bildirimler</button>
+        <button type="button" data-tab="guide" class="nav-link"><span>?</span>Kullanım kılavuzu</button>
+      </nav>
+      <div class="side-foot">Bu panel yalnızca yerel inceleme içindir. İçerik onayı yayımlama işlemi değildir.</div>
+    </aside>
+    <main class="main-content" id="main" tabindex="-1">
+      <div id="load-state" class="loading">Panel verileri yükleniyor…</div>
+      <div id="panel" hidden>
+        <div class="context-row"><label class="term-control">Dönem <select id="term-select" aria-label="Dönem seç"></select></label><button id="new-term" type="button" class="btn outline">+ Yeni dönem</button><button id="archive-term" type="button" class="btn subtle"></button><button id="student-preview" type="button" class="btn outline" hidden>Öğrenci görünümü</button></div>
+        <div id="term-note" class="term-note"></div>
+        <section id="view"></section>
+      </div>
+    </main>
+  </div>
+  <dialog id="dialog" class="app-dialog" aria-labelledby="dialog-title"><div class="dialog-head"><h2 id="dialog-title"></h2><button id="dialog-close" type="button" class="icon-button" aria-label="Kapat">×</button></div><div id="dialog-body"></div><div id="dialog-actions" class="dialog-actions"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

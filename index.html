@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f7">
+  <title>Tensor Çalışmaları · Öğrenci</title>
+  <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="./usage-guide.css">
+  <link rel="stylesheet" href="./feedback.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">T<span>·</span></span><span>Tensor <strong>Çalışmaları</strong></span></div>
+      <div class="topbar-right"><span class="course-tag">DERİN ÖĞRENME</span><span class="avatar" aria-label="Deneme öğrenci hesabı">D</span></div>
+    </header>
+
+    <div class="preview-bar" aria-label="Öğretmen önizleme araçları" style="display:none">
+      <div class="preview-title"><span class="preview-dot"></span><strong>Öğretmen önizlemesi</strong><span class="preview-separator"></span><span>Deneme hesabı · Kayıtlar bu tarayıcıda tutulur</span></div>
+      <div class="preview-controls">
+        <label class="switch-label" for="clipboard-toggle"><input id="clipboard-toggle" type="checkbox" checked><span class="switch-ui" aria-hidden="true"></span><span>Editörde kopyala/yapıştırı sınırla</span></label>
+        <button id="export-btn" class="toolbar-button" type="button">Sonuçları indir</button>
+        <button id="reset-btn" class="toolbar-button danger" type="button">Denemeyi sıfırla</button>
+      </div>
+    </div>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Soru gezinmesi">
+        <div class="sidebar-head"><p class="eyebrow">ÇALIŞMA PLANI</p><h2 id="sidebar-title">Ödev yükleniyor</h2><p id="sidebar-subtitle"></p></div>
+        <div class="sidebar-progress"><div class="progress-top"><span>Tamamlanan</span><strong id="progress-count">0 / 10</strong></div><div class="progress-track"><span id="progress-fill"></span></div><div class="score-row"><span>Ön puan</span><strong><span id="score-value">0</span><small> / 100</small></strong></div></div>
+        <nav id="task-nav" class="task-nav" aria-label="Sorular"></nav>
+        <div class="sidebar-foot"><span class="sidebar-foot-icon">i</span><p>Yanıtların bu tarayıcıda saklanır. Sayfayı yenilesen de kaldığın yerden devam edebilirsin.</p></div>
+      </aside>
+
+      <main id="main" class="main-content" tabindex="-1">
+        <div id="load-error" class="load-error" hidden></div>
+        <details class="student-guide" id="student-guide" hidden></details>
+        <nav id="available-homeworks" class="available-homeworks" aria-label="Aktif çalışmalarınız" hidden></nav>
+        <section id="assignment-empty" class="assignment-empty" aria-labelledby="assignment-empty-title" hidden>
+          <div class="availability-symbol" aria-hidden="true">◷</div>
+          <p id="assignment-empty-kicker" class="eyebrow"></p>
+          <h1 id="assignment-empty-title"></h1>
+          <p id="assignment-empty-message" class="empty-message"></p>
+          <p id="assignment-empty-deadline" class="empty-deadline" hidden></p>
+          <div id="assignment-empty-results" class="closed-results" hidden></div>
+          <p id="assignment-empty-draft" class="empty-draft" hidden></p>
+          <div id="assignment-empty-actions" class="empty-actions"></div>
+          <p class="empty-footnote">Teslim tarihleri Türkiye saatine göre gösterilir.</p>
+        </section>
+        <div id="content" hidden>
+          <div class="breadcrumb"><span>Çalışmanız</span><span class="chevron">›</span><strong id="crumb-task"></strong></div>
+          <div class="lesson-header"><div><p class="eyebrow" id="lesson-kicker"></p><h1 id="lesson-title"></h1><p id="lesson-summary" class="lesson-summary"></p></div><div class="lesson-meta"><span id="time-label"></span><span id="task-count-label"></span></div></div>
+          <section id="availability-banner" class="deadline-banner" aria-label="Ödev teslim durumu">
+            <div><p id="availability-title" class="deadline-title"></p><p id="availability-deadline" class="deadline-date"></p></div>
+            <div id="deadline-countdown" class="deadline-countdown" role="timer" aria-live="off" aria-label="Son gönderime kalan süre">
+              <span><strong id="remaining-days">0</strong><small>gün</small></span>
+              <span><strong id="remaining-hours">00</strong><small>saat</small></span>
+              <span><strong id="remaining-minutes">00</strong><small>dakika</small></span>
+              <span><strong id="remaining-seconds">00</strong><small>saniye</small></span>
+            </div>
+          </section>
+          <p class="grading-note">Kod puanları ön değerlendirmedir; son not öğretmen onayına bağlıdır.</p>
+          <div class="research-note"><span class="note-icon" aria-hidden="true">✦</span><p id="research-note-text"></p></div>
+          <div class="task-card"><div class="task-card-head"><div class="task-heading"><span id="task-kind" class="kind-pill"></span><span id="task-number" class="task-number"></span></div><span id="task-points" class="points-badge"></span></div><h2 id="task-title"></h2><div id="task-prompt" class="task-prompt"></div><div id="task-body"></div></div>
+          <div class="bottom-nav"><button id="previous-btn" class="nav-button secondary" type="button">← Önceki soru</button><span id="task-position"></span><button id="next-btn" class="nav-button primary" type="button">Sonraki soru →</button></div>
+        </div>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -101,8 +101,6 @@ function updateAvailabilityUI() {
     activeNav.dataset.key = navKey;
   }
   activeNav.querySelectorAll('button').forEach(button => { button.disabled = busy; });
-  const hasWork = Object.values(state?.forms || {}).some(entries => Object.values(entries).some(entry => entry?.attempts?.length || entry?.draft != null));
-  $('export-btn').hidden = !open && !hasWork;
   $('reset-btn').hidden = !open || !!cloudContext || !!(teacherContext && !teacherContext.isSimulation);
   const banner = $('availability-banner');
   if (open) {
@@ -117,13 +115,13 @@ function updateAvailabilityUI() {
     const pending = form && !teacherContext?.isSimulation && (cloudContext?.hasPausedDrafts(form.id) || unsavedClosedDrafts.has(form.id));
     $('assignment-empty-kicker').textContent = screen.phase === 'expired' ? 'SÜRE TAMAMLANDI' : 'ÖDEV DURUMU';
     $('assignment-empty-title').textContent = changed ? 'Ödeviniz güncellendi' : screen.title;
-    $('assignment-empty-message').textContent = changed ? 'Güncel ödevinizi görmek için sayfayı yenileyin. Kaydedilmemiş yanıtlarınızı önce Sonuçları indir düğmesiyle saklayabilirsiniz.' : screen.message;
+    $('assignment-empty-message').textContent = changed ? 'Güncel ödevinizi görmek için sayfayı yenileyin. Hesabınıza kaydedilmemiş yanıtlarınız yenileme sırasında kaybolabilir.' : screen.message;
     const showClosedDeadline = !changed && screen.phase === 'expired' && !!screen.status?.deadline;
     $('assignment-empty-deadline').hidden = !showClosedDeadline;
     $('assignment-empty-deadline').textContent = showClosedDeadline ? `Son gönderim süresi ${formatDeadline(screen.status.deadline)} tarihinde doldu.` : '';
     document.querySelector('.empty-footnote').hidden = !showClosedDeadline;
     $('assignment-empty-draft').hidden = !pending;
-    $('assignment-empty-draft').textContent = 'Son taslağınız bu açık sayfada korunuyor; hesabınıza gönderilemedi. Sayfayı yenilemeden önce Sonuçları indir düğmesiyle saklayabilirsiniz. Ödev yeniden açılırsa kaydetme devam eder.';
+    $('assignment-empty-draft').textContent = 'Son taslağınız bu açık sayfada korunuyor; hesabınıza gönderilemedi. Sayfayı kapatır veya yenilerseniz kaydedilmemiş kısım kaybolabilir. Ödev yeniden açılırsa kaydetme devam eder.';
     const result = $('assignment-empty-results');
     const totals = form ? formResult() : {completed:0,totalTasks:0,total:0,finalScore:null};
     const completed = totals.completed;
@@ -579,26 +577,6 @@ async function submitChoice(task, selectedOption) {
     selection = null; confirmChoice = false; renderTask(); updateProgress();
   } catch (error) { toast(String(error?.message || error),true); }
 }
-function resultsPayload() {
-  const exportedState = structuredClone(state);
-  for (const entries of Object.values(exportedState.forms || {})) for (const entry of Object.values(entries)) {
-    for (const key of Object.keys(entry)) if (!['draft','attempts'].includes(key)) delete entry[key];
-    entry.attempts = entry.attempts.map(attempt => Object.fromEntries(['submittedAt','submittedCode','selectedOption','provisional'].filter(key => Object.hasOwn(attempt,key)).map(key => [key,attempt[key]])));
-  }
-  const results = Object.fromEntries(data.forms.map(item => {
-    const result = resultFor(item);
-    delete result.finalScore;
-    if (item.grades_published !== true || currentAvailability(item.id).isOpen) { delete result.total; delete result.finalScore; }
-    return [item.id,result];
-  }));
-  return {kind:cloudContext ? 'tensor-calismalari-student-results' : 'tensor-calismalari-local-preview',content_version:data.content_version,exported_at:new Date().toISOString(),results,state:exportedState};
-}
-function downloadResults() {
-  const payload = resultsPayload();
-  const url = URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
-  const link = document.createElement('a'); link.href = url; link.download = `tensor-calismalari-deneme-${new Date().toISOString().slice(0,10)}.json`;
-  document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url),1000);
-}
 function resetCurrentForm() {
   if (busy || !form || (teacherContext && !teacherContext.isSimulation) || cloudContext) return;
   const dialog = element('dialog','reset-dialog');
@@ -619,7 +597,6 @@ function resetCurrentForm() {
 function setupEvents() {
   $('previous-btn').addEventListener('click', () => navigate(taskIndex - 1));
   $('next-btn').addEventListener('click', () => navigate(taskIndex + 1));
-  $('export-btn').addEventListener('click', downloadResults);
   $('reset-btn').addEventListener('click', resetCurrentForm);
 }
 function teacherReturnUrl() {
@@ -639,7 +616,6 @@ function setupTeacherPreviewToolbar() {
   const avatar = document.querySelector('.avatar'); avatar.textContent = 'Ö'; avatar.setAttribute('aria-label','Öğretmen önizlemesi');
   $('clipboard-toggle').closest('label').style.display = 'none';
   $('reset-btn').textContent = 'Önizlemeyi sıfırla';
-  $('export-btn').textContent = 'Deneme sonuçlarını indir';
   document.querySelector('.sidebar-foot p').textContent = 'Denemeler yalnızca bu açık önizlemede tutulur; sayfadan ayrılınca sıfırlanır. Öğrencilerin puanları ve hakları değişmez.';
   const back = element('a','toolbar-button teacher-return','← Öğretmen paneline dön'); back.id = 'teacher-return'; back.href = teacherReturnUrl();
   const refresh = element('button','toolbar-button','Görünümü yenile'); refresh.type = 'button';
@@ -702,7 +678,7 @@ async function init() {
     if (!teacherContext) cloudContext = await loadCloudStudent({onAvailabilityChange:updateAvailabilityUI,onDraftError:error => {
       if ($('retry-draft-btn')) $('retry-draft-btn').hidden = false;
       updateAvailabilityUI();
-      toast(`${error?.message || 'Taslak hesabına kaydedilemedi.'} ${error?.code === 'FORM_CHANGED' ? 'Yenilemeden önce Sonuçları indir düğmesiyle açık sayfadaki yanıtlarını saklayabilirsin.' : isAvailabilityError(error) ? 'Taslağın bu açık sayfada korunuyor; ödev açılana kadar kayıt durduruldu.' : 'Taslağın bu açık sayfada korunuyor; taslak kaydını yeniden dene.'}`,true);
+      toast(`${error?.message || 'Taslak hesabına kaydedilemedi.'} ${error?.code === 'FORM_CHANGED' ? 'Güncel ödev için sayfayı yenilemelisin; hesabına kaydedilmemiş yanıtların yenileme sırasında kaybolabilir.' : isAvailabilityError(error) ? 'Taslağın bu açık sayfada korunuyor; ödev açılana kadar kayıt durduruldu.' : 'Taslağın bu açık sayfada korunuyor; taslak kaydını yeniden dene.'}`,true);
     }});
     if (cloudContext?.redirected) return;
     if (teacherContext?.isSimulation) {

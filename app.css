@@ -37,3 +37,16 @@
 .closed-score{font-size:22px;color:#2a6656}
 .empty-draft{padding:14px;margin:22px 0 0;background:#fff8e9;border:1px solid #eddcaf;border-radius:8px;font-size:12px;line-height:1.8;color:#876c3d;text-align:left}
 @media(max-width:720px){.assignment-unavailable .main-content{padding-top:26px}.assignment-empty{padding:30px 20px}.deadline-banner{padding:15px}.deadline-countdown{gap:6px}.deadline-countdown>span{min-width:48px}.deadline-countdown strong{font-size:19px}}
+
+/* Submission receipts communicate saved work without correctness colors. */
+.submission-receipt{margin-top:18px;padding:16px;border:1px solid #dce5e9;border-radius:7px;background:#f7f9fb;color:#526773}
+.submission-receipt h3{margin:0 0 8px;font-size:13px;color:#334e60}
+.submission-receipt p{margin:0;font-size:12px;line-height:1.65}
+.published-solutions{margin:0 0 24px;padding:22px;border:1px solid #dce5e9;border-radius:10px;background:#fff}
+.published-solutions>h2{font-size:21px;margin:0 0 9px}.published-solutions>p{font-size:13px;color:#607982;line-height:1.6}
+.published-homework{margin-top:14px;border:1px solid #dce5e9;border-radius:7px;overflow:hidden}.published-homework>summary{padding:16px;cursor:pointer;font-weight:700;font-size:14px;background:#f7f9fb}
+.published-solution{padding:18px;border-top:1px solid #e3eaed;font-size:13px;line-height:1.7}.published-solution h3{margin:0 0 12px;font-size:15px}.published-solution p{white-space:pre-wrap}
+.solution-code{white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:#142632;color:#e8f3ee;border-radius:7px;font:12px/1.7 'SFMono-Regular',Consolas,monospace}
+.task-link.done .task-link-status{color:#647a88}.task-link.done .task-index{background:#eef2f5;color:#526773}
+.score-pending{margin:0;padding:0 22px 16px;color:#6b7e89;font-size:11px;line-height:1.6}@media(max-width:720px){.score-pending{padding:0 16px 8px}}
+.student-notifications,.published-grades{margin:0 0 24px;padding:22px;border:1px solid #dce5e9;border-radius:10px;background:#fff}.student-notifications>h2,.published-grades>h2{margin:0 0 15px;font-size:21px}.publication-notification,.published-grade{padding:16px 0;border-top:1px solid #e3eaed;font-size:13px;line-height:1.7}.publication-notification h3,.published-grade h3{margin:0 0 8px;font-size:15px}.publication-notification p,.published-grade p{margin:7px 0}.publication-date{color:#768893;font-size:11px}.publication-notification a{display:inline-block;margin-top:6px;text-decoration:none}.published-total{font-weight:700;font-size:17px}.score-row[hidden]{display:none}

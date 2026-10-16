@@ -1,4 +1,4 @@
-import {loadState, saveState, getEntry, saveDraft, attemptLimit, remainingAttempts, recordAttempt, bestScore, scoreForm, resetForm} from './attempt-policy.js';
+import {loadState, saveState, getEntry, saveDraft, attemptLimit, remainingAttempts, recordAttempt, scoreForm, resetForm} from './attempt-policy.js';
 import {PythonRunner} from './runner-client.js';
 import {loadTeacherPreview} from './teacher-preview.js';
 import {loadTeacherStudentPreview} from './teacher-student-preview.js';
@@ -18,7 +18,7 @@ let toastTimer, availabilityTimer, statusRefreshTimer;
 let lastAvailabilityOpen = null;
 let renderedAttemptPolicy = null;
 const unsavedClosedDrafts = new Set();
-let teacherContext = null, cloudContext = null, localPreviewEnabled = false;
+let teacherContext = null, cloudContext = null, localPreviewEnabled = false, gradingSubmission = false;
 
 function toast(message, warning = false) {
   const node = $('toast');
@@ -73,6 +73,11 @@ function currentAvailability(formId = form?.id) {
 }
 function updateAvailabilityUI() {
   if (!data) return;
+  if (cloudContext && data !== cloudContext.data) { syncCloudState(); return; }
+  if (form?.grades_published !== true) $('teacher-grade')?.remove();
+  else if (form?.solutions_published !== true) $('teacher-grade')?.querySelector('.feedback-text')?.remove();
+  renderPublications();
+  renderPublishedSolutions();
   const policyKey = JSON.stringify([form?.attempt_policy,form?.question_attempt_limits]);
   if (form && currentTask() && !busy && renderedAttemptPolicy !== policyKey) renderTask();
   renderStudentGuide($('student-guide'),data.student_guide,form && currentAvailability().isOpen ? form.attempt_policy || {code:2,choice:1} : null,form?.question_attempt_limits);
@@ -120,14 +125,16 @@ function updateAvailabilityUI() {
     $('assignment-empty-draft').hidden = !pending;
     $('assignment-empty-draft').textContent = 'Son taslağınız bu açık sayfada korunuyor; hesabınıza gönderilemedi. Sayfayı yenilemeden önce Sonuçları indir düğmesiyle saklayabilirsiniz. Ödev yeniden açılırsa kaydetme devam eder.';
     const result = $('assignment-empty-results');
-    const completed = form ? tasks.filter(submitted).length : 0;
+    const totals = form ? formResult() : {completed:0,totalTasks:0,total:0,finalScore:null};
+    const completed = totals.completed;
     const grade = form?.teacher_grade;
     result.hidden = !completed && !grade;
-    const summary = grade ? `Onaylı son not: ${grade.score} / 100` : `Ön puan: ${form ? scoreForm(state,form.id) : 0} / 100`;
-    const resultKey = JSON.stringify([completed,tasks.length,summary,grade?.note]);
+    const summary = totals.finalScore != null ? `Onaylı son not: ${totals.finalScore} / 100` : totals.total == null ? 'Notların öğretmenin yayımladığında görünür.' : `Toplam ödev puanı: ${totals.total} / 100`;
+    const note = form?.solutions_published === true ? grade?.note : null;
+    const resultKey = JSON.stringify([completed,totals.totalTasks,summary,note]);
     if (result.dataset.key !== resultKey) {
-      result.replaceChildren(element('p','closed-result-label','Kayıtlı sonuçlarınız'),element('strong','closed-score',summary),element('p','',`${completed} / ${tasks.length} yanıt gönderildi. ${grade ? 'Öğretmeninizin onayladığı nottur.' : 'Son not öğretmen onayına bağlıdır.'}`));
-      if (grade?.note) result.append(element('p','',grade.note));
+      result.replaceChildren(element('p','closed-result-label','Kayıtlı sonuçlarınız'),element('strong','closed-score',summary),element('p','',`${completed} / ${totals.totalTasks} yanıt gönderildi. ${totals.finalScore != null ? 'Öğretmeninizin onayladığı nottur.' : 'Son not öğretmen onayına bağlıdır.'}`));
+      if (note) result.append(element('p','',note));
       result.dataset.key = resultKey;
     }
     const actions = $('assignment-empty-actions'), actionKey = JSON.stringify([!!changed,...screen.available.map(item => [item.id,item.title])]);
@@ -203,6 +210,71 @@ function currentEntry() { return getEntry(state, form.id, currentTask().taskId);
 function taskLimit(type,taskId=currentTask()?.taskId) { return attemptLimit(type,form?.attempt_policy,taskId,form?.question_attempt_limits); }
 function taskRemaining(entry,type,taskId=currentTask()?.taskId) { return remainingAttempts(entry,type,form?.attempt_policy,taskId,form?.question_attempt_limits); }
 function submitted(task) { return getEntry(state, form.id, task.taskId).attempts.length > 0; }
+function resultFor(selected) {
+  const selectedTasks = formTasks(selected), completed = selectedTasks.filter(task => getEntry(state,selected.id,task.taskId).attempts.length).length;
+  const published = selected.grades_published === true && !currentAvailability(selected.id).isOpen;
+  if (cloudContext) {
+    const summary = selected.result_summary || {completed,totalTasks:selectedTasks.length};
+    return {completed:summary.completed,totalTasks:summary.totalTasks,total:published ? summary.finalScore ?? summary.total ?? null : null,finalScore:published ? summary.finalScore ?? null : null};
+  }
+  return {total:published ? selected.teacher_grade?.score ?? scoreForm(state,selected.id) : null,completed,totalTasks:selectedTasks.length,finalScore:published ? selected.teacher_grade?.score ?? null : null};
+}
+function formResult() { return resultFor(form); }
+function publicationForms(kind) {
+  return cloudContext || teacherContext ? data.forms.filter(item => item[`${kind}_published`] === true && !currentAvailability(item.id).isOpen && !cloudContext?.isFormChanged(item.id)) : [];
+}
+function renderPublications() {
+  const host = $('student-notifications');
+  const notifications = (data.notifications || []).filter(item => publicationForms(item.kind).some(form => form.id === item.form_id && form[`${item.kind}_published_at`] === item.publishedAt));
+  const key = JSON.stringify(notifications); host.hidden = !notifications.length;
+  if (host.dataset.key !== key) {
+    host.dataset.key = key; host.replaceChildren(); host.append(element('h2','','Bildirimler'));
+    for (const notice of notifications) {
+      const item = element('article','publication-notification');
+      item.append(element('h3','',notice.title),element('p','',notice.message));
+      if (notice.publishedAt) item.append(element('p','publication-date',`${formatDeadline(notice.publishedAt)} · Türkiye saati`));
+      const link = element('a','text-button',notice.kind === 'grades' ? 'Yayımlanan notları gör' : 'Yayımlanan çözümleri gör');
+      link.href = notice.kind === 'grades' ? '#published-grades' : '#published-solutions'; item.append(link); host.append(item);
+    }
+  }
+  const grades = $('published-grades'), published = publicationForms('grades');
+  const gradeKey = JSON.stringify(published.map(item => [item.id,item.title,resultFor(item),item.solutions_published ? item.teacher_grade?.note : null]));
+  grades.hidden = !published.length;
+  if (grades.dataset.key === gradeKey) return;
+  grades.dataset.key = gradeKey; grades.replaceChildren(); grades.append(element('h2','','Yayımlanan notlar'));
+  for (const homework of published) {
+    const item = element('article','published-grade'), result = resultFor(homework);
+    item.append(element('h3','',homework.title || 'Ödeviniz'),element('p','published-total',result.total == null ? 'Toplam not yüklenemedi. Durumu yenileyin.' : `${result.finalScore != null ? 'Onaylı son not' : 'Toplam ödev notu'}: ${result.total} / 100`));
+    if (homework.solutions_published && homework.teacher_grade?.note) item.append(element('p','',homework.teacher_grade.note));
+    grades.append(item);
+  }
+}
+function renderPublishedSolutions() {
+  const host = $('published-solutions');
+  const published = publicationForms('solutions').filter(item => item.solutions?.length);
+  const key = JSON.stringify(published.map(item => [item.id,item.title,item.solutions]));
+  host.hidden = !published.length;
+  if (host.dataset.key === key) return;
+  host.dataset.key = key; host.replaceChildren();
+  host.append(element('h2','','Yayımlanan çözümler'),element('p','', 'Öğretmeninizin yayımladığı, size atanmış ödev çözümleri.'));
+  for (const homework of published) {
+    const section = element('details','published-homework');
+    section.append(element('summary','',homework.title || 'Ödev çözümleri'));
+    for (const solution of homework.solutions) {
+      const article = element('article','published-solution');
+      article.append(element('h3','',`${solution.id}${solution.title ? ' · '+solution.title : ''}`));
+      renderPrompt(article,solution.prompt);
+      if (solution.type === 'code') article.append(element('pre','solution-code',solution.solution_code));
+      else {
+        for (const option of solution.options) article.append(element('p','',`${option.id}. ${option.text}`));
+        article.append(element('p','',`Doğru seçenek: ${solution.correct_option}`));
+        if (solution.explanation) article.append(element('p','',solution.explanation));
+      }
+      section.append(article);
+    }
+    host.append(section);
+  }
+}
 function setDisabledWhileBusy(disabled) {
   busy = disabled;
   document.querySelectorAll('#available-homeworks button, #assignment-empty-actions button').forEach(el => { el.disabled = disabled; });
@@ -222,15 +294,19 @@ function setDisabledWhileBusy(disabled) {
   applyTaskAvailability();
 }
 function updateProgress() {
-  const completed = tasks.filter(submitted).length;
-  $('progress-count').textContent = `${completed} / ${tasks.length}`;
-  $('progress-fill').style.width = `${tasks.length ? 100*completed/tasks.length : 0}%`;
-  $('score-value').textContent = String(scoreForm(state, form.id));
+  const totals = formResult(), completed = totals.completed;
+  $('progress-count').textContent = `${completed} / ${totals.totalTasks}`;
+  $('progress-fill').style.width = `${totals.totalTasks ? 100*completed/totals.totalTasks : 0}%`;
+  $('score-value').textContent = totals.total == null ? '—' : String(totals.total);
+  $('score-value').setAttribute('aria-label',totals.total == null ? 'Notların öğretmenin yayımladığında görünür' : `${totals.total} toplam puan`);
+  $('score-value').closest('.score-row').hidden = totals.total == null;
+  $('score-pending').hidden = totals.total != null;
   for (const nav of $('task-nav').querySelectorAll('button[data-task-id]')) {
     const task = tasks.find(t => t.taskId === nav.dataset.taskId);
     nav.classList.toggle('done', submitted(task));
     const marker = nav.querySelector('.task-link-status');
-    marker.textContent = submitted(task) ? '✓' : '';
+    marker.textContent = submitted(task) ? '•' : '';
+    marker.setAttribute('aria-label',submitted(task) ? 'Gönderildi' : '');
   }
 }
 function selectForm(formId, preferredTaskId = null, allowBusy = false) {
@@ -249,10 +325,10 @@ function selectForm(formId, preferredTaskId = null, allowBusy = false) {
   $('task-count-label').textContent = `${tasks.length} soru · 100 puan`;
   $('research-note-text').textContent = form.research_note || data.research_note || DEFAULT_RESEARCH_NOTE;
   $('teacher-grade')?.remove();
-  if (form.teacher_grade) {
+  if (formResult().finalScore != null) {
     const grade = element('section','feedback-panel'); grade.id = 'teacher-grade';
     grade.append(element('h3','feedback-title',`Öğretmen tarafından onaylanan son not: ${form.teacher_grade.score} / 100`));
-    if (form.teacher_grade.note) grade.append(element('p','feedback-text',form.teacher_grade.note));
+    if (form.solutions_published === true && form.teacher_grade.note) grade.append(element('p','feedback-text',form.teacher_grade.note));
     document.querySelector('.research-note').after(grade);
   }
   if (teacherContext || cloudContext) {
@@ -321,6 +397,7 @@ function statusNode() {
   return node;
 }
 function updateRunnerStatus(next) {
+  if (gradingSubmission && ['ready','error'].includes(next.state)) next = {state:'ready',message:'Değerlendirme işlemi tamamlandı.'};
   status = next;
   const node = $('runner-status'); if (!node) return;
   node.replaceChildren(); const dot = element('span','status-dot');
@@ -368,10 +445,9 @@ function renderOutput() {
   const body = element('pre',`output-body${!content?' empty':''}${codeOutput && !codeOutput.ok?' error':''}`,content || placeholder); panel.append(body);
 }
 function renderCodeFeedback(entry) {
-  const last = entry.attempts.at(-1), best = bestScore(entry);
-  const panel = element('section',`feedback-panel${last.score < last.maxPoints ? ' fail' : ''}`);
-  panel.append(element('h3','feedback-title',`Son değerlendirme: ${last.score} / ${last.maxPoints} puan`));
-  panel.append(element('p','feedback-text',`Bu sorudaki en iyi puanın ${best} / ${last.maxPoints}. ${taskRemaining(entry,'code') ? 'Kodunu düzenleyip tekrar gönderebilirsin.' : 'Değerlendirme hakların tamamlandı; kodu yine de çalıştırabilirsin.'}`));
+  const panel = element('section','submission-receipt');
+  panel.append(element('h3','','Gönderim kaydedildi'));
+  panel.append(element('p','',taskRemaining(entry,'code') ? 'Kodunu düzenleyip kalan hakkınla tekrar gönderebilirsin.' : 'Gönderim hakların tamamlandı; ödev açıkken kodu çalıştırabilirsin.'));
   $('task-body').append(panel);
 }
 function renderChoice(task, entry) {
@@ -392,9 +468,9 @@ function renderChoice(task, entry) {
   }); host.append(options);
   host.append(element('p','attempt-hint',`${remaining} / ${taskLimit('choice',task.taskId)} gönderim hakkı kaldı · En yüksek puan geçerlidir.`));
   if (last) {
-    const result = element('section',`feedback-panel choice-result${last.score ? '' : ' fail'}`);
-    result.append(element('h3','feedback-title',`Yanıt kaydedildi · ${last.score} / ${task.points} puan`));
-    result.append(element('p','feedback-text',`Son seçimin: ${last.selectedOption}. En iyi puanın: ${bestScore(entry)} / ${task.points}.`));
+    const result = element('section','submission-receipt choice-result');
+    result.append(element('h3','','Yanıt kaydedildi'));
+    result.append(element('p','',`Son seçimin: ${last.selectedOption}.`));
     result.append(element('p','feedback-text',locked ? 'Bu soru için gönderim hakların tamamlandı.' : 'Kalan hakkınla yeni bir yanıt gönderebilirsin. Doğru cevap ve çözüm açıklaması gösterilmez.')); host.append(result);
   }
   if ((!locked || pending) && confirmChoice && selection) {
@@ -434,6 +510,7 @@ async function gradeCode(task, code) {
   const check = assessment.forms[formId]?.[task.taskId];
   if (!pending && !check?.checks_code) { toast('Bu soru için değerlendirme yüklenemedi.',true); return; }
   storeDraft(formId,task.taskId,code);
+  gradingSubmission = true;
   setDisabledWhileBusy(true); codeOutput = {ok:true,stdout:'',mode:pending ? 'Gönderim kaydediliyor…' : 'Değerlendiriliyor…'}; renderOutput();
   try {
     let result;
@@ -443,8 +520,8 @@ async function gradeCode(task, code) {
     } else {
       result = await (await ensureRunner()).grade(code,check.checks_code);
       if (result.infrastructure || result.cancelled) {
-        codeOutput = {...result,mode:result.cancelled ? 'Değerlendirme durduruldu' : 'Python başlatılamadı'};
-        toast(result.error || 'Değerlendirme tamamlanamadı; hakkın korunuyor.',true); return;
+        codeOutput = {ok:false,error:result.cancelled ? 'İşlem iptal edildi; gönderim hakkın korunuyor.' : 'Değerlendirme tamamlanamadı; gönderim hakkın korunuyor.',mode:result.cancelled ? 'Değerlendirme durduruldu' : 'Python başlatılamadı'};
+        toast(codeOutput.error,true); return;
       }
     }
     if (!canSubmit()) { codeOutput = {ok:false,error:'Ödev kapandığı için değerlendirme gönderilmedi. Yeni bir hak kullanılmadı.',mode:'Ödev kapalı'}; return; }
@@ -460,20 +537,20 @@ async function gradeCode(task, code) {
       codeOutput = {ok:true,stdout:'',mode:'Gönderim kaydediliyor…'}; renderOutput();
       if ($('stop-run-btn')) $('stop-run-btn').hidden = true;
       await cloudContext.submit(formId,task.taskId,{codeResult:{...attempt,output:[attempt.stdout,attempt.stderr].filter(Boolean).join('\n')}});
-      codeOutput = {ok:true,stdout:'Değerlendirme kaydedildi. Puanın aşağıda gösterilir.',mode:'Kaydedilen değerlendirme'};
+      codeOutput = {ok:true,stdout:'Gönderim kaydedildi.',mode:'Kaydedilen gönderim'};
       syncCloudState();
       toast('Değerlendirme hesabına kaydedildi.');
     } else {
-      codeOutput = {ok:true,stdout:'Değerlendirme tamamlandı. Puanın aşağıda gösterilir.',mode:'Değerlendirme'};
+      codeOutput = {ok:true,stdout:'Gönderim kaydedildi.',mode:'Kaydedilen gönderim'};
       recordAttempt(state,formId,task.taskId,'code',attempt,form.attempt_policy,form.question_attempt_limits);
       if (!persist()) { getEntry(state,formId,task.taskId).attempts.pop(); codeOutput = {ok:false,error:'Değerlendirme kaydedilemedi. Yeni bir hak kullanılmadı.',mode:'Kaydedilemedi'}; }
       renderTask(); updateProgress();
     }
   } catch (error) {
-    codeOutput = {ok:false,error:String(error?.message || error),mode:'Gönderim tamamlanamadı'};
+    codeOutput = {ok:false,error:cloudContext ? String(error?.message || 'Gönderim tamamlanamadı.') : 'Değerlendirme tamamlanamadı; gönderim hakkın korunuyor.',mode:'Gönderim tamamlanamadı'};
     if (cloudContext) renderTask();
     toast(cloudContext ? `${error?.message || 'Gönderim sunucuya kaydedilemedi.'} ${cloudContext.pendingAttempt(formId,task.taskId) ? 'Bekleyen gönderimi aynı kod ve kimlikle tekrar kaydetmek için gönder düğmesini kullan.' : 'Güncel hakları görmek için sayfayı yenileyebilirsin.'}` : 'Değerlendirme tamamlanamadı; gönderim hakkın korunuyor.',true);
-  } finally { renderOutput(); setDisabledWhileBusy(false); }
+  } finally { gradingSubmission = false; renderOutput(); setDisabledWhileBusy(false); }
 }
 async function submitChoice(task, selectedOption) {
   if (busy || !canSubmit() || (taskRemaining(currentEntry(),'choice') === 0 && !cloudContext?.pendingAttempt(form.id,task.taskId))) return;
@@ -502,12 +579,22 @@ async function submitChoice(task, selectedOption) {
     selection = null; confirmChoice = false; renderTask(); updateProgress();
   } catch (error) { toast(String(error?.message || error),true); }
 }
-function downloadResults() {
+function resultsPayload() {
   const exportedState = structuredClone(state);
   for (const entries of Object.values(exportedState.forms || {})) for (const entry of Object.values(entries)) {
-    entry.attempts = entry.attempts.map(attempt => Object.fromEntries(['score','maxPoints','submittedAt','submittedCode','selectedOption','provisional'].filter(key => Object.hasOwn(attempt,key)).map(key => [key,attempt[key]])));
+    for (const key of Object.keys(entry)) if (!['draft','attempts'].includes(key)) delete entry[key];
+    entry.attempts = entry.attempts.map(attempt => Object.fromEntries(['submittedAt','submittedCode','selectedOption','provisional'].filter(key => Object.hasOwn(attempt,key)).map(key => [key,attempt[key]])));
   }
-  const payload = {kind:cloudContext ? 'tensor-calismalari-student-results' : 'tensor-calismalari-local-preview',content_version:data.content_version,exported_at:new Date().toISOString(),state:exportedState};
+  const results = Object.fromEntries(data.forms.map(item => {
+    const result = resultFor(item);
+    delete result.finalScore;
+    if (item.grades_published !== true || currentAvailability(item.id).isOpen) { delete result.total; delete result.finalScore; }
+    return [item.id,result];
+  }));
+  return {kind:cloudContext ? 'tensor-calismalari-student-results' : 'tensor-calismalari-local-preview',content_version:data.content_version,exported_at:new Date().toISOString(),results,state:exportedState};
+}
+function downloadResults() {
+  const payload = resultsPayload();
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
   const link = document.createElement('a'); link.href = url; link.download = `tensor-calismalari-deneme-${new Date().toISOString().slice(0,10)}.json`;
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url),1000);

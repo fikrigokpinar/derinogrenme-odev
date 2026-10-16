@@ -1,5 +1,5 @@
 import {getCloudClient, requireCloudSession} from './cloud-client.js';
-import {AvailabilityClock, normalizeAttemptPolicy, normalizeQuestionAttemptLimits} from './cloud-student.js';
+import {AvailabilityClock, normalizeAttemptPolicy, normalizeQuestionAttemptLimits, stripStudentAnswers, clearStudentPublications, publicationChanged} from './cloud-student.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const failure = (message, status = 502, code = 'PREVIEW_RESPONSE') => Object.assign(new Error(message),{status,code});
@@ -31,6 +31,7 @@ function previewSnapshot(value) {
   // Take only preview fields. Backend attempt state and unrelated identity or
   // grade fields cannot seed a simulation's answers.
   const data = clone(value.data);
+  stripStudentAnswers({data,assessment:{forms:{}},attemptState:{forms:{}}});
   for (const form of data.forms) {
     delete form.teacher_grade;
     form.attempt_policy = normalizeAttemptPolicy(form.attempt_policy);
@@ -95,6 +96,15 @@ export class TeacherStudentPreviewContext {
       try {
         const response = await this.client.api('teacher-preview-availability',{termId:this.term.id,guideRevision:this.data.student_guide?.revision||0});
         const forms = availabilityForms(response);
+        let refreshSolutions = false;
+        for (const form of this.data.forms) {
+          const latest = forms.find(item => item.id === form.id);
+          if (!latest || latest.revision !== this.revisions[form.id] || publicationChanged(form,latest) || ((Object.hasOwn(latest,'solutions_published') || Object.hasOwn(latest,'grades_published')) && latest.availability.isOpen !== form.availability.isOpen)) {
+            clearStudentPublications(form);
+            if (latest && latest.revision === this.revisions[form.id]) refreshSolutions = true;
+          }
+        }
+        if (refreshSolutions) { this.data.notifications = []; this.onAvailabilityChange(); }
         for (const latest of forms) {
           const form = this.data.forms.find(item => item.id === latest.id);
           if (form && latest.revision === this.revisions[form.id]) normalizeQuestionAttemptLimits(latest.question_attempt_limits,form);
@@ -109,10 +119,25 @@ export class TeacherStudentPreviewContext {
             this.updateAvailability(form.id,latest.availability);
           } else this.clock.close(form.id,'inactive');
         }
+        if (refreshSolutions) {
+          const full = previewSnapshot(await this.client.api('teacher-preview',{termId:this.term.id}));
+          for (const form of this.data.forms) {
+            const latest = full.data.forms.find(item => item.id === form.id);
+            if (latest && full.revisions[form.id] === this.revisions[form.id] && !this.availability(form.id).isOpen) {
+              form.solutions_published = latest.solutions_published;
+              form.solutions = latest.solutions;
+              form.solutions_published_at = latest.solutions_published_at;
+              form.grades_published = latest.grades_published;
+              form.grades_published_at = latest.grades_published_at;
+            }
+          }
+          this.data.notifications = full.data.notifications.filter(item => this.data.forms.some(form => form.id === item.form_id && form[`${item.kind}_published`]));
+        }
         this.onAvailabilityChange();
       } catch (error) {
         if ([400,401,403].includes(error?.status)) {
-          for (const form of this.data.forms) this.clock.close(form.id,'inactive');
+          for (const form of this.data.forms) { this.clock.close(form.id,'inactive'); clearStudentPublications(form); }
+          this.data.notifications = [];
           this.onAvailabilityChange();
         }
         throw error;

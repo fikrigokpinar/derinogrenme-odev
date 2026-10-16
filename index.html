@@ -28,7 +28,8 @@
     <div class="workspace">
       <aside class="sidebar" aria-label="Soru gezinmesi">
         <div class="sidebar-head"><p class="eyebrow">ÇALIŞMA PLANI</p><h2 id="sidebar-title">Ödev yükleniyor</h2><p id="sidebar-subtitle"></p></div>
-        <div class="sidebar-progress"><div class="progress-top"><span>Tamamlanan</span><strong id="progress-count">0 / 10</strong></div><div class="progress-track"><span id="progress-fill"></span></div><div class="score-row"><span>Ön puan</span><strong><span id="score-value">0</span><small> / 100</small></strong></div></div>
+        <div class="sidebar-progress"><div class="progress-top"><span>Tamamlanan</span><strong id="progress-count">0 / 10</strong></div><div class="progress-track"><span id="progress-fill"></span></div><div class="score-row" hidden><span>Toplam ödev puanı</span><strong><span id="score-value">—</span><small> / 100</small></strong></div></div>
+        <p id="score-pending" class="score-pending">Notların öğretmenin yayımladığında görünür.</p>
         <nav id="task-nav" class="task-nav" aria-label="Sorular"></nav>
         <div class="sidebar-foot"><span class="sidebar-foot-icon">i</span><p>Yanıtların bu tarayıcıda saklanır. Sayfayı yenilesen de kaldığın yerden devam edebilirsin.</p></div>
       </aside>
@@ -37,6 +38,9 @@
         <div id="load-error" class="load-error" hidden></div>
         <details class="student-guide" id="student-guide" hidden></details>
         <nav id="available-homeworks" class="available-homeworks" aria-label="Aktif çalışmalarınız" hidden></nav>
+        <section id="student-notifications" class="student-notifications" aria-label="Bildirimler" hidden></section>
+        <section id="published-grades" class="published-grades" aria-label="Yayımlanan notlar" hidden></section>
+        <section id="published-solutions" class="published-solutions" aria-label="Yayımlanan çözümler" hidden></section>
         <section id="assignment-empty" class="assignment-empty" aria-labelledby="assignment-empty-title" hidden>
           <div class="availability-symbol" aria-hidden="true">◷</div>
           <p id="assignment-empty-kicker" class="eyebrow"></p>
@@ -60,7 +64,7 @@
               <span><strong id="remaining-seconds">00</strong><small>saniye</small></span>
             </div>
           </section>
-          <p class="grading-note">Kod puanları ön değerlendirmedir; son not öğretmen onayına bağlıdır.</p>
+          <p class="grading-note">Gönderimlerden sonra kaydın, tamamlanan soru sayısı ve kalan hakların görünür. Kişisel ek süreler dahil tüm gönderim süreleri bitince öğretmenin notları ve çözümleri ayrı ayrı yayımlayabilir; yayımlandığında bu sayfada bildirim görürsün. Notlar yayımlandığında yalnız toplam ödev puanın açılır. Soru bazında puan veya doğru / yanlış bilgisi gösterilmez.</p>
           <div class="research-note"><span class="note-icon" aria-hidden="true">✦</span><p id="research-note-text"></p></div>
           <div class="task-card"><div class="task-card-head"><div class="task-heading"><span id="task-kind" class="kind-pill"></span><span id="task-number" class="task-number"></span></div><span id="task-points" class="points-badge"></span></div><h2 id="task-title"></h2><div id="task-prompt" class="task-prompt"></div><div id="task-body"></div></div>
           <div class="bottom-nav"><button id="previous-btn" class="nav-button secondary" type="button">← Önceki soru</button><span id="task-position"></span><button id="next-btn" class="nav-button primary" type="button">Sonraki soru →</button></div>

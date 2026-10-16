@@ -1,5 +1,6 @@
 import {TeacherStore} from './teacher/store.js';
 import {assignmentVariant} from './teacher/assignment-variants.js';
+import {solutionReleaseStatus,gradeReleaseStatus} from './teacher/solution-release.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -95,6 +96,18 @@ export async function loadTeacherPreview() {
       form.availability = status;
       form.attempt_policy = latest.getAssignmentAttemptLimits(termId,form.homework_id);
       form.question_attempt_limits = questionLimits(latest,currentStudent,form);
+      const assignment = latest.state.assignments.find(item => item.id === form.homework_id);
+      const valid = assignment?.approvedRevision === revisions[form.id] && JSON.stringify(assignment.approved) === JSON.stringify(sourceSnapshots[form.id]) && !status.isOpen && assignmentVariant(latest.state,currentStudent,form.homework_id) === form.variant;
+      for (const [kind,release] of [['grades',gradeReleaseStatus],['solutions',solutionReleaseStatus]]) {
+        const publication = release(latest.state,termId,form.homework_id);
+        form[`${kind}_published`] = valid && publication.published;
+        form[`${kind}_published_at`] = form[`${kind}_published`] ? publication.publishedAt : null;
+      }
+      const variant = assignment?.approved?.variants.find(item => item.id === form.variant);
+      form.solutions = form.solutions_published ? variant.questions.flatMap(q => q.type === 'code' ? [{id:q.id,type:'code',title:q.title,prompt:clone(q.prompt),solution_code:q.solution_code}] : q.items.map(item => ({id:item.id,type:'choice',prompt:item.prompt,options:clone(item.options),correct_option:item.correct_option,explanation:item.explanation}))) : [];
+      const submission = latest.state.submissions.find(item => item.termId === termId && item.studentId === studentId && item.formId === form.id && item.revision === revisions[form.id]);
+      form.teacher_grade = form.grades_published && submission?.grade ? clone(submission.grade) : null;
+      if (form.teacher_grade && !form.solutions_published) delete form.teacher_grade.note;
     }
     return status;
   }
@@ -103,9 +116,16 @@ export async function loadTeacherPreview() {
     if (!status.isOpen) throw Object.assign(new Error(status.reason === 'expired' ? 'Ödevin son teslim tarihi geçti. Yeni yanıt kaydedilemez.' : 'Bu ödev kapalı. Yeni yanıt kaydedilemez.'),
       {status:403,code:status.reason === 'expired' ? 'DEADLINE_PASSED' : 'ASSIGNMENT_CLOSED'});
   }
+  for (const form of forms) availability(form.id,store);
+  function notifications() {
+    return forms.flatMap(form => ['grades','solutions'].flatMap(kind => form[`${kind}_published`] ? [{
+      id:[termId,form.id,revisions[form.id],kind,form[`${kind}_published_at`]].join(':'),kind,homework_id:form.homework_id,form_id:form.id,
+      title:kind === 'grades' ? 'Notlar yayımlandı' : 'Çözümler yayımlandı',message:form.title + (kind === 'grades' ? ' için toplam ödev notun yayımlandı.' : ' için çözümler yayımlandı.'),publishedAt:form[`${kind}_published_at`]
+    }] : []));
+  }
   return {
     student, term: store.state.terms.find(t => t.id === termId), revisions, attemptState,
-    data: {student_guide:clone(store.state.studentGuide||null),content_version:version,forms,research_note:forms[0].research_note},
+    data: {student_guide:clone(store.state.studentGuide||null),content_version:version,forms,research_note:forms[0].research_note,get notifications(){return notifications();}},
     assessment: {content_version:version,forms:keys},
     availability,
     refreshAvailability() {

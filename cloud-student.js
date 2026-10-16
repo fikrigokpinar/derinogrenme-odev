@@ -2,6 +2,15 @@ import {getCloudClient, requireCloudSession} from './cloud-client.js';
 import {availabilityStatus} from './teacher/assignment-availability.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
+export function clearStudentPublications(form) {
+  form.grades_published = false; form.grades_published_at = null;
+  form.solutions_published = false; form.solutions_published_at = null; form.solutions = [];
+  if (form.result_summary) { form.result_summary.total = null; form.result_summary.finalScore = null; }
+  form.teacher_grade = null;
+}
+export function publicationChanged(form, latest) {
+  return ['grades','solutions'].some(kind => (latest[`${kind}_published`] === true) !== form[`${kind}_published`] || (latest[`${kind}_published_at`] || null) !== (form[`${kind}_published_at`] || null));
+}
 export const isAvailabilityError = error => ['ASSIGNMENT_CLOSED','DEADLINE_PASSED','FORM_CHANGED'].includes(error?.code);
 export function normalizeAttemptPolicy(value) {
   if (value === undefined) return {code:2,choice:1};
@@ -27,20 +36,79 @@ export function normalizeQuestionAttemptLimits(value, form = null) {
 // Only real student payloads pass through this boundary. Teacher simulations
 // keep their private grading keys, while student responses never expose them.
 export function stripStudentAnswers(snapshot) {
-  const privateFields = ['correct_option','explanation','solution','solution_code','reference_solution','reference_code'];
+  const privateFields = ['correct_option','explanation','solution','solution_code','reference_solution','reference_code','score','bestScore','correct','is_correct','isCorrect','checks','error','feedback'];
   const strip = object => { if (object && typeof object === 'object') for (const field of privateFields) delete object[field]; };
   for (const form of snapshot.data.forms) {
+    // Missing publication metadata is closed, including old API/cache data.
+    if (!form.result_summary) {
+      const entries = Object.values(snapshot.attemptState.forms[form.id] || {});
+      form.result_summary = {
+        total:null,
+        completed:entries.filter(entry => entry.attempts?.length).length,
+        totalTasks:form.questions.reduce((sum,question) => sum + (question.type === 'code' ? 1 : (question.items || []).length),0),
+        finalScore:null
+      };
+    }
+    const summary = form.result_summary;
+    form.result_summary = {
+      total:Number.isFinite(summary.total) ? summary.total : null,
+      completed:Number.isInteger(summary.completed) && summary.completed >= 0 ? summary.completed : 0,
+      totalTasks:form.questions.reduce((sum,question) => sum + (question.type === 'code' ? 1 : (question.items || []).length),0),
+      finalScore:Number.isFinite(summary.finalScore) ? summary.finalScore : null
+    };
+    form.grades_published = form.grades_published === true && form.availability?.isOpen === false;
+    form.grades_published_at = form.grades_published ? form.grades_published_at || null : null;
+    if (!form.grades_published) {
+      form.result_summary.total = null;
+      form.result_summary.finalScore = null;
+      form.teacher_grade = null;
+    }
+    // Declassify only the API's explicit release payload for this assigned form.
+    // Ordinary questions, grading keys and historical attempts remain private.
+    const tasks = new Map(form.questions.flatMap(q => q.type === 'code' ? [[q.id,q]] : (q.items || []).map(item => [item.id,item])));
+    const released = form.solutions_published === true && form.availability?.isOpen === false;
+    const seen = new Set();
+    form.solutions = released && Array.isArray(form.solutions) ? form.solutions.flatMap(solution => {
+      const task = tasks.get(solution?.id);
+      if (!task || seen.has(solution.id)) return [];
+      seen.add(solution.id);
+      if (solution.type === 'code' && task.type === 'code' && typeof solution.solution_code === 'string') {
+        return [{id:solution.id,type:'code',title:String(solution.title || task.title || ''),prompt:clone(solution.prompt ?? task.prompt ?? ''),solution_code:solution.solution_code}];
+      }
+      if (solution.type === 'choice' && task.type !== 'code' && Array.isArray(task.options) && task.options.some(option => option.id === solution.correct_option)) {
+        return [{id:solution.id,type:'choice',prompt:clone(solution.prompt ?? task.prompt ?? ''),options:task.options.map(option => ({id:option.id,text:String(option.text || '')})),correct_option:solution.correct_option,explanation:String(solution.explanation || '')}];
+      }
+      return [];
+    }) : [];
+    form.solutions_published = released;
+    form.solutions_published_at = released ? form.solutions_published_at || null : null;
+    if (form.teacher_grade) form.teacher_grade = {
+      score:form.teacher_grade.score,reviewedAt:form.teacher_grade.reviewedAt,
+      ...(released && typeof form.teacher_grade.note === 'string' ? {note:form.teacher_grade.note} : {})
+    };
     strip(form);
     for (const question of form.questions) {
       strip(question);
       for (const item of question.items || []) strip(item);
     }
   }
+  const notifications = Array.isArray(snapshot.data.notifications) ? snapshot.data.notifications : [];
+  const seenNotifications = new Set();
+  snapshot.data.notifications = notifications.flatMap(item => {
+    const form = snapshot.data.forms.find(form => form.id === item?.form_id && form.homework_id === item?.homework_id);
+    if (!form || !['grades','solutions'].includes(item.kind) || !form[`${item.kind}_published`] || typeof item.id !== 'string' || seenNotifications.has(item.id) || item.publishedAt !== form[`${item.kind}_published_at`]) return [];
+    seenNotifications.add(item.id);
+    return [{id:item.id,kind:item.kind,homework_id:form.homework_id,form_id:form.id,title:String(item.title || ''),message:String(item.message || ''),publishedAt:item.publishedAt}];
+  });
   for (const keys of Object.values(snapshot.assessment.forms || {})) for (const key of Object.values(keys)) strip(key);
-  const visibleAttemptFields = new Set(['score','maxPoints','submittedAt','submittedCode','selectedOption','provisional']);
+  const visibleAttemptFields = new Set(['submittedAt','submittedCode','selectedOption','provisional']);
   for (const entries of Object.values(snapshot.attemptState.forms)) for (const entry of Object.values(entries)) {
-    strip(entry);
+    for (const field of Object.keys(entry)) if (!['draft','attempts'].includes(field)) delete entry[field];
     for (const attempt of entry.attempts || []) for (const field of Object.keys(attempt)) if (!visibleAttemptFields.has(field)) delete attempt[field];
+  }
+  if (snapshot.lastAttempt) {
+    for (const field of Object.keys(snapshot.lastAttempt)) if (!['formId','taskId','attempt'].includes(field)) delete snapshot.lastAttempt[field];
+    if (snapshot.lastAttempt.attempt) for (const field of Object.keys(snapshot.lastAttempt.attempt)) if (!visibleAttemptFields.has(field)) delete snapshot.lastAttempt.attempt[field];
   }
   return snapshot;
 }
@@ -176,6 +244,9 @@ export class CloudStudentContext {
   markClosed(formId, error) {
     if (error?.code === 'FORM_CHANGED') this.changedForms.add(formId);
     this.clock.close(formId,error?.code === 'DEADLINE_PASSED' ? 'expired' : 'inactive');
+    const form = this.data.forms.find(item => item.id === formId);
+    if (form) clearStudentPublications(form);
+    stripStudentAnswers(this.snapshot);
     this.onAvailabilityChange();
   }
   hasPausedDrafts(formId = null) {
@@ -187,6 +258,16 @@ export class CloudStudentContext {
     this.refreshingAvailability = (async () => {
       const response = await this.client.api('student-availability',{termId:this.term.id,guideRevision:this.data.student_guide?.revision||0});
       const next = validateAvailabilityResponse(response);
+      let refreshState = false;
+      for (const form of this.data.forms) {
+        const latest = next.find(item => item.id === form.id);
+        if (!latest || latest.revision !== this.revisions[form.id] || publicationChanged(form,latest) || ((Object.hasOwn(latest,'solutions_published') || Object.hasOwn(latest,'grades_published')) && latest.availability.isOpen !== form.availability?.isOpen)) {
+          // Hide the previous release immediately, even if the full fetch fails.
+          clearStudentPublications(form);
+          if (latest && latest.revision === this.revisions[form.id]) refreshState = true;
+        }
+      }
+      if (refreshState) { stripStudentAnswers(this.snapshot); this.onAvailabilityChange(); }
       for (const latest of next) {
         const form = this.data.forms.find(item => item.id === latest.id);
         if (form && latest.revision === this.revisions[form.id]) normalizeQuestionAttemptLimits(latest.question_attempt_limits,form);
@@ -206,10 +287,17 @@ export class CloudStudentContext {
         }
       }
       stripStudentAnswers(this.snapshot);
+      if (refreshState) this.applySnapshot(await this.client.api('student-state',{termId:this.term.id}));
       this.onAvailabilityChange();
       clearTimeout(this.timer);
       if (this.hasWritableDrafts()) this.timer = setTimeout(() => { this.flushDrafts().catch(this.onDraftError); },this.delay);
-    })().finally(() => { this.refreshingAvailability = null; });
+    })().catch(error => {
+      if ([401,403].includes(error?.status)) {
+        for (const form of this.data.forms) clearStudentPublications(form);
+        stripStudentAnswers(this.snapshot); this.onAvailabilityChange();
+      }
+      throw error;
+    }).finally(() => { this.refreshingAvailability = null; });
     return this.refreshingAvailability;
   }
   saveDraft(formId, taskId, draft) {

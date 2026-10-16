@@ -62,6 +62,6 @@ export class CloudTeacherStore {
   }
   async resetPassword(studentId) { return this.exclusive(async()=>{const response=await this.write('reset-password',{studentId});return response.credential;}); }
 }
-for(const method of ['addTerm','archiveTerm','addStudent','updateStudent','setStudentActive','clearRoster','importRoster','saveAssignment','approveAssignment','revertAssignment','reviewGrade','setAssignmentAvailability','setAssignmentAttemptLimits','grantStudentQuestionAttempts','setStudentAssignmentDeadlines','initializeAssignmentVariants','saveStudentGuide','saveFeedbackSettings','saveFeedbackReply','setFeedbackStatus']) {
+for(const method of ['addTerm','archiveTerm','addStudent','updateStudent','setStudentActive','clearRoster','importRoster','saveAssignment','approveAssignment','revertAssignment','reviewGrade','setAssignmentAvailability','setSolutionRelease','setGradeRelease','setAssignmentAttemptLimits','grantStudentQuestionAttempts','setStudentAssignmentDeadlines','initializeAssignmentVariants','saveStudentGuide','saveFeedbackSettings','saveFeedbackReply','setFeedbackStatus']) {
   CloudTeacherStore.prototype[method]=function(...args) { return this.command(method,args); };
 }

@@ -8,6 +8,7 @@ import {PythonRunner} from '../runner-client.js';
 import {formatDeadline, toDeadlineInput, fromDeadlineInput, assignmentAvailability, studentAssignmentAvailability} from './assignment-availability.js';
 import {guideContent, renderStudentGuide} from '../usage-guide.js';
 import {feedbackSettings, FEEDBACK_STATUSES} from './feedback-model.js';
+import {solutionReleaseStatus, gradeReleaseStatus} from './solution-release.js';
 
 const $ = id => document.getElementById(id);
 const node = (tag, cls = '', value = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (value !== '') e.textContent = String(value); return e; };
@@ -286,6 +287,7 @@ function renderStudents(view){
   const ss=students();
   const h=heading('PANEL / ÖĞRENCİLER','Öğrenciler',`${ss.filter(s=>s.active).length} etkin · ${ss.filter(s=>!s.active).length} pasif öğrenci`);
   const actions=node('div','actions');append(actions,button('+ Öğrenci ekle','',()=>studentDialog()),button('Toplu içe aktar','outline',openImport));h.append(actions);view.append(h);
+  view.append(node('p','student-access-help','Bir öğrencinin veya test hesabının ödev erişimini durdurmak için satırındaki Pasif yap düğmesini kullanın. Hesap ve sonuçlar saklanır. Yeniden açmak için durum filtresinden Pasif’i seçip Etkinleştir’e basın.'));
   const bar=node('div','toolbar'),search=input('search',studentSearch,'Numara veya ad ara');search.setAttribute('aria-label','Öğrenci ara');
   search.oninput=()=>{studentSearch=search.value;selectedStudentIds.clear();renderStudentTable();};
   const filter=select([['active','Etkin'],['inactive','Pasif'],['all','Tümü']],studentFilter);filter.setAttribute('aria-label','Durum filtresi');
@@ -313,7 +315,7 @@ function renderStudentTable(){
     formsCell.dataset.studentForms=s.id;formsCell.dataset.homeworks=JSON.stringify(active.map(a=>a.id));tr.append(formsCell);
     const st=node('td');st.append(status(s.active?'Etkin':'Pasif',s.active?'':'muted'));tr.append(st);
     const cell=node('td'),row=node('div','row-actions');
-    append(row,button('Düzenle','outline small',()=>studentDialog(s)),button(s.active?'Kaldır':'Geri al',s.active?'danger small':'subtle small',()=>confirmDialog(s.active?'Öğrenciyi kaldır':'Öğrenciyi geri al',`${s.name} (${s.number}) ${s.active?'pasif yapılacak':'yeniden etkin olacak'}. Sonuç kayıtları korunur.`,s.active?'Pasif yap':'Etkinleştir',async()=>{await store.setStudentActive(s.id,!s.active);selectedStudentIds.delete(s.id);render();toast('Öğrenci durumu güncellendi.');})));
+    append(row,button('Düzenle','outline small',()=>studentDialog(s)),button(s.active?'Pasif yap':'Etkinleştir',s.active?'danger small':'subtle small',()=>confirmDialog(s.active?'Öğrenciyi pasif yap':'Öğrenciyi etkinleştir',`${s.name} (${s.number}) ${s.active?'pasif yapılacak. Pasifken ödevlere erişemez. Hesabı, önceki yanıtları ve sonuç kayıtları korunur; Pasif filtresinden yeniden etkinleştirebilirsiniz':'yeniden etkin olacak. Hesabı ve önceki kayıtlarıyla ödevlere erişebilecek'}.`,s.active?'Pasif yap':'Etkinleştir',async()=>{await store.setStudentActive(s.id,!s.active);selectedStudentIds.delete(s.id);render();toast('Öğrenci durumu güncellendi.');})));
     if(s.active){const extra=button('Ek hak / süre','outline small',()=>studentExceptionsDialog(s));extra.disabled=!!currentTerm()?.archived;row.append(extra);}
     if(cloudClient)row.append(button('Şifre sıfırla','outline small',()=>resetPasswordDialog(s)));
     if(s.active&&!cloudClient)row.append(button('Öğrenci ekranını aç','subtle small',()=>openStudent(s)));
@@ -441,6 +443,8 @@ function deliveryToggleLabel(value){return value.isOpen?'Kapat':value.reason==='
 function updateDeliveryIndicators(){
   if(!store?.state)return;
   if(tab==='students')updateStudentFormIndicators();
+  updateGradeReleaseIndicators();
+  updateSolutionReleaseIndicators();
   document.querySelectorAll('.delivery-box[data-homework]').forEach(box=>{
     const value=assignmentAvailability(store.state,termId(),box.dataset.homework);
     const badge=box.querySelector('[data-delivery-status]');badge.textContent=deliveryLabel(value);badge.classList.toggle('pending',!value.isOpen);
@@ -448,6 +452,85 @@ function updateDeliveryIndicators(){
   });
 }
 setInterval(updateDeliveryIndicators,1000);
+function releaseExplanation(value,homeworkId,targetTerm=termId(),kind='solution') {
+  const label=kind==='grade'?'Notlar':'Çözümler',object=kind==='grade'?'notları':'çözümleri';
+  if(value.reason==='missing_term')return `${label} için bir dönem seçin.`;
+  if(value.reason==='unapproved')return `Önce ödev içeriğini onaylayın. ${label}, tüm gönderimler kapandıktan sonra ayrıca yayımlanır.`;
+  if(value.reason==='archived')return `Bu dönem arşivlenmiş. ${label} için önce dönemi arşivden çıkarın.`;
+  if(value.published)return `${label} öğrencilere açık${value.publishedAt?` · ${shortDate(value.publishedAt)}`:''}.`;
+  if(value.canPublish)return `Tüm gönderimler kapalı. Hazır olduğunuzda ${object} bu düğmeyle açabilirsiniz.`;
+  const general=assignmentAvailability(store.state,targetTerm,homeworkId);
+  if(general.isOpen)return `Genel gönderim açık. ${label} için önce gönderimleri kapatın veya son tarihi bekleyin.${value.openStudentCount?` Şu anda ${value.openStudentCount} etkin öğrenci gönderim yapabilir.`:''}`;
+  if(value.openStudentCount)return `${value.openStudentCount} etkin öğrenci kişisel ek süre veya izinle hâlâ gönderim yapabilir. ${label} ancak bu gönderimler de kapandığında yayımlanabilir.`;
+  return `${label} için tüm gönderimlerin kapanması gerekir.`;
+}
+function updateGradeReleaseIndicators() {
+  for(const box of document.querySelectorAll('[data-grade-release]')) {
+    const value=gradeReleaseStatus(store.state,box.dataset.term,box.dataset.gradeRelease);
+    const badge=box.querySelector('[data-grade-status]');
+    badge.textContent=value.published?'Notlar yayımlandı':'Notlar açıklanmadı';badge.classList.toggle('muted',!value.published);
+    const explanation=box.querySelector('[data-grade-explanation]'),message=releaseExplanation(value,box.dataset.gradeRelease,box.dataset.term,'grade');
+    if(explanation.textContent!==message)explanation.textContent=message;
+    const publish=box.querySelector('[data-grade-publish]'),hide=box.querySelector('[data-grade-hide]');
+    publish.hidden=value.published;publish.disabled=actionBusy||!value.canPublish;
+    hide.hidden=!value.published;hide.disabled=actionBusy;
+  }
+}
+function renderGradeReleaseControls(card,a) {
+  const targetTerm=termId(),box=node('section','solution-release-box grade-release-box');
+  box.dataset.gradeRelease=a.id;box.dataset.term=targetTerm;
+  const badge=status('Notlar açıklanmadı','muted');badge.dataset.gradeStatus='';
+  const explanation=node('p','solution-release-explanation');explanation.dataset.gradeExplanation='';explanation.setAttribute('aria-live','polite');
+  const actions=node('div','actions');
+  const publish=button('Notları yayımla','outline',()=>{
+    const value=gradeReleaseStatus(store.state,targetTerm,a.id);
+    if(!value.canPublish){updateGradeReleaseIndicators();toast(releaseExplanation(value,a.id,targetTerm,'grade'),true);return;}
+    const term=store.state.terms.find(t=>t.id===targetTerm);
+    confirmDialog('Notları öğrencilere yayımla',`${term?.name||'Seçili dönem'} · ${a.id}: Bu ödeve atanmış tüm öğrencilere, kısmi teslimler dahil, varsa onaylı son notları; yoksa kayıtlı otomatik toplam puanları gösterilecek. Soru puanları açılmaz. Öğrencilere hemen uygulama içi bildirim gösterilir; e-posta gönderilmez. Çözümlerin yayımı ayrı yönetilir. Notlar yayımlansın mı?`,'Notları yayımla',async()=>{
+      await store.setGradeRelease(targetTerm,a.id,true);updateGradeReleaseIndicators();updateSolutionReleaseIndicators();toast(`${a.id} notları yayımlandı; uygulama içi bildirim hazır.`);
+    });
+  });publish.dataset.gradePublish='';
+  const hide=button('Notları gizle','subtle',()=>confirmDialog('Notları gizle',`${a.id} toplam notları bu dönemin öğrencilerine kapatılacak. Çözümlerin yayım durumu değişmez. Yanıtlar ve not kayıtları korunur.`,'Notları gizle',async()=>{
+    await store.setGradeRelease(targetTerm,a.id,false);updateGradeReleaseIndicators();updateSolutionReleaseIndicators();toast(`${a.id} notları gizlendi.`);
+  }));hide.dataset.gradeHide='';
+  append(actions,publish,hide);
+  append(box,node('p','eyebrow','NOTLARIN YAYIMI'),badge,node('p','help','Öğrenciler bu dönem ve ödev için siz notları yayımlayana kadar toplam puan göremez. Yayımlanınca varsa onaylı son not, yoksa kayıtlı otomatik toplam gösterilir; kısmi teslimler dahildir. Soru puanları açılmaz. Yayım hemen uygulama içi bildirim oluşturur; e-posta gönderilmez. Son notu değiştirmek notların yeniden yayımlanmasını gerektirir.'),explanation,actions);
+  card.append(box);
+}
+function updateSolutionReleaseIndicators() {
+  for(const box of document.querySelectorAll('[data-solution-release]')) {
+    const value=solutionReleaseStatus(store.state,box.dataset.term,box.dataset.solutionRelease);
+    const badge=box.querySelector('[data-solution-status]');
+    badge.textContent=value.published?'Çözümler yayımlandı':'Çözümler gizli';badge.classList.toggle('muted',!value.published);
+    const explanation=box.querySelector('[data-solution-explanation]'),message=releaseExplanation(value,box.dataset.solutionRelease,box.dataset.term);
+    if(explanation.textContent!==message)explanation.textContent=message;
+    const publish=box.querySelector('[data-solution-publish]'),hide=box.querySelector('[data-solution-hide]');
+    publish.hidden=value.published;publish.disabled=actionBusy||!value.canPublish;
+    hide.hidden=!value.published;hide.disabled=actionBusy;
+  }
+}
+function renderSolutionReleaseControls(card,a) {
+  const targetTerm=termId(),box=node('section','solution-release-box');
+  box.dataset.solutionRelease=a.id;box.dataset.term=targetTerm;
+  const badge=status('Çözümler gizli','muted');badge.dataset.solutionStatus='';
+  const explanation=node('p','solution-release-explanation');explanation.dataset.solutionExplanation='';explanation.setAttribute('aria-live','polite');
+  const actions=node('div','actions');
+  const publish=button('Çözümleri yayımla','outline',()=>{
+    const value=solutionReleaseStatus(store.state,targetTerm,a.id);
+    if(!value.canPublish){updateSolutionReleaseIndicators();toast(releaseExplanation(value,a.id,targetTerm),true);return;}
+    const term=store.state.terms.find(t=>t.id===targetTerm);
+    confirmDialog('Çözümleri öğrencilere yayımla',`${term?.name||'Seçili dönem'} · ${a.id}: Öğrenciler çözüm ve doğru yanıt ayrıntılarını görebilecek. Bu işlem içerik onayından ve notların yayımından ayrıdır. Öğrencilere hemen uygulama içi bildirim gösterilir; e-posta gönderilmez. Çözümleri daha sonra gizleyebilirsiniz. Yayımlansın mı?`,'Çözümleri yayımla',async()=>{
+      await store.setSolutionRelease(targetTerm,a.id,true);updateSolutionReleaseIndicators();toast(`${a.id} çözümleri yayımlandı.`);
+    });
+  });publish.dataset.solutionPublish='';
+  const hide=button('Çözümleri gizle','subtle',()=>confirmDialog('Çözümleri gizle',`${a.id} çözümleri bu dönemin öğrencilerine kapatılacak. Notların yayım durumu değişmez. Önceki yanıtlar ve sonuçlar korunur.`,'Çözümleri gizle',async()=>{
+    await store.setSolutionRelease(targetTerm,a.id,false);updateSolutionReleaseIndicators();toast(`${a.id} çözümleri gizlendi.`);
+  }));hide.dataset.solutionHide='';
+  append(actions,publish,hide);
+  append(box,node('p','eyebrow','ÇÖZÜMLERİN YAYIMI'),badge,node('p','help','Bu dönem ve ödev için ayrı yönetilir. İçerik onayı ve notların yayımı çözümleri açmaz. Çözüm ayrıntıları tüm gönderim süreleri kapanıp siz çözümleri yayımladıktan sonra açılır. Bu düğme notların görünürlüğünü değiştirmez. Yayım hemen uygulama içi bildirim oluşturur; e-posta gönderilmez.'),explanation,actions);
+  card.append(box);
+}
+
 function renderVariantMap(card,a) {
   const box=node('section','variant-map');
   box.setAttribute('aria-label',`${a.id} son rakama göre form dağılımı`);
@@ -528,7 +611,7 @@ function attemptLimitsDialog(homeworkId){
     finishDialog();render();toast('Gönderim hakları kaydedildi.');
   }}]);
 }
-function renderAssignments(view){const h=heading('PANEL / ÖDEVLER','Ödev içerikleri','Ödevleri açıp kapatın, son gönderim tarihini belirleyin; soruları taslakta düzenleyip onaylayın.');view.append(h);const cards=node('div','grid-2');for(const a of assignments()){const c=node('div','card');append(c,node('p','eyebrow',a.id),node('h2','',assignmentName(a)),node('p','',a.draft?.summary||'A, B ve C formları · 100 puan'),node('div','assignment-meta',`Taslak sürüm ${a.revision} · Onaylı sürüm ${a.approvedRevision||'yok'}`));const line=node('div','card-actions');append(line,status(a.revision===a.approvedRevision?'Onaylı':'Onay bekliyor',a.revision===a.approvedRevision?'':'pending'),button('İçeriği düzenle','outline',()=>showAssignment(a.id)));if(cloudClient){const preview=button('Öğrenci görünümü','subtle',()=>openStudentPreview(a.id));preview.disabled=!a.approvedRevision;line.append(preview);}c.append(line);renderDeliveryControls(c,a);renderAttemptControls(c,a);renderVariantMap(c,a);cards.append(c);}view.append(cards);startAssignment(edit.id);const a=assignment(edit.id);if(!a)return;const wrap=node('div','card');wrap.append(node('p','eyebrow',`${a.id} · TASLAK DÜZENLEYİCİ`));const subtitle=node('div','assignment-meta',`Onaylı sürüm ${a.approvedRevision||'yok'} · Taslak sürüm ${a.revision}${edit.dirty?' · Kaydedilmemiş değişiklikler':''}`);wrap.append(subtitle);const hw=edit.draft;const tt=input('text',hw.title||'');tt.oninput=()=>{hw.title=tt.value;edit.dirty=true;subtitle.textContent=`Onaylı sürüm ${a.approvedRevision||'yok'} · Taslak sürüm ${a.revision} · Kaydedilmemiş değişiklikler`;};wrap.append(field('Ödev başlığı',tt));const research=textarea(hw.research_note||'');research.rows=3;research.oninput=()=>{hw.research_note=research.value;edit.dirty=true;};wrap.append(field('Öğrenciye gösterilen araştırma notu',research));const clipboard=input('checkbox');clipboard.checked=edit.settings.clipboardBlocked!==false;clipboard.onchange=()=>{edit.settings.clipboardBlocked=clipboard.checked;edit.dirty=true;};wrap.append(field('Kod editöründe kopyala/yapıştırı sınırla',clipboard));{const limits=store.getAssignmentAttemptLimits(termId(),a.id);wrap.append(node('p','help',`Bu dönem ${a.id}: her kod sorusu ${limits.code}, her test maddesi ${limits.choice} gönderim hakkı. Kodu çalıştırmak hak azaltmaz. Hakları yukarıdaki ödev kartından değiştirebilirsiniz.`));}const tabs=node('div','form-tabs');for(const code of ['A','B','C']){const b=node('button','',`Form ${code}`);b.type='button';b.classList.toggle('active',code===edit.variant);b.onclick=()=>{edit.variant=code;edit.question='Q1';render();};tabs.append(b);}wrap.append(tabs);const form=variant(hw,edit.variant);if(!form){wrap.append(node('div','error-box','Bu formun içerik verisi bulunamadı.'));view.append(wrap);return;}const fsummary=textarea(form.summary||'');fsummary.rows=2;fsummary.oninput=()=>{form.summary=fsummary.value;edit.dirty=true;};wrap.append(field(`Form ${edit.variant} hazırlama notu (öğretmene özel)`,fsummary));const qnav=node('div','question-nav');for(const q of form.questions){const b=node('button','',q.id);b.type='button';b.classList.toggle('active',q.id===edit.question);b.onclick=()=>{edit.question=q.id;render();};qnav.append(b);}wrap.append(qnav);const q=form.questions.find(x=>x.id===edit.question)||form.questions[0];if(q){edit.question=q.id;renderQuestion(wrap,q);}const bar=node('div','savebar');append(bar,button('Taslağı kaydet','',()=>act(saveDraft)),button('Onaylı içeriğe dön','subtle',()=>revertDraft()),button('İçeriği onayla','outline',()=>approveDraft()));const approveButton=bar.lastChild;approveButton.disabled=edit.dirty||a.revision===a.approvedRevision;bar.append(node('span','help',cloudClient?'İçerik onayı güncel soruları kaydeder; teslim ayarları ayrıca uygulanır.':'İçerik onayı öğrenciler için yayımlama işlemi değildir.'));wrap.append(bar);view.append(wrap);}
+function renderAssignments(view){const h=heading('PANEL / ÖDEVLER','Ödev içerikleri','Ödevleri açıp kapatın, son gönderim tarihini belirleyin; soruları taslakta düzenleyip onaylayın.');view.append(h);const cards=node('div','grid-2');for(const a of assignments()){const c=node('div','card');append(c,node('p','eyebrow',a.id),node('h2','',assignmentName(a)),node('p','',a.draft?.summary||'A, B ve C formları · 100 puan'),node('div','assignment-meta',`Taslak sürüm ${a.revision} · Onaylı sürüm ${a.approvedRevision||'yok'}`));const line=node('div','card-actions');append(line,status(a.revision===a.approvedRevision?'Onaylı':'Onay bekliyor',a.revision===a.approvedRevision?'':'pending'),button('İçeriği düzenle','outline',()=>showAssignment(a.id)));if(cloudClient){const preview=button('Öğrenci görünümü','subtle',()=>openStudentPreview(a.id));preview.disabled=!a.approvedRevision;line.append(preview);}c.append(line);renderDeliveryControls(c,a);renderGradeReleaseControls(c,a);renderSolutionReleaseControls(c,a);renderAttemptControls(c,a);renderVariantMap(c,a);cards.append(c);}view.append(cards);updateGradeReleaseIndicators();updateSolutionReleaseIndicators();startAssignment(edit.id);const a=assignment(edit.id);if(!a)return;const wrap=node('div','card');wrap.append(node('p','eyebrow',`${a.id} · TASLAK DÜZENLEYİCİ`));const subtitle=node('div','assignment-meta',`Onaylı sürüm ${a.approvedRevision||'yok'} · Taslak sürüm ${a.revision}${edit.dirty?' · Kaydedilmemiş değişiklikler':''}`);wrap.append(subtitle);const hw=edit.draft;const tt=input('text',hw.title||'');tt.oninput=()=>{hw.title=tt.value;edit.dirty=true;subtitle.textContent=`Onaylı sürüm ${a.approvedRevision||'yok'} · Taslak sürüm ${a.revision} · Kaydedilmemiş değişiklikler`;};wrap.append(field('Ödev başlığı',tt));const research=textarea(hw.research_note||'');research.rows=3;research.oninput=()=>{hw.research_note=research.value;edit.dirty=true;};wrap.append(field('Öğrenciye gösterilen araştırma notu',research));const clipboard=input('checkbox');clipboard.checked=edit.settings.clipboardBlocked!==false;clipboard.onchange=()=>{edit.settings.clipboardBlocked=clipboard.checked;edit.dirty=true;};wrap.append(field('Kod editöründe kopyala/yapıştırı sınırla',clipboard));{const limits=store.getAssignmentAttemptLimits(termId(),a.id);wrap.append(node('p','help',`Bu dönem ${a.id}: her kod sorusu ${limits.code}, her test maddesi ${limits.choice} gönderim hakkı. Kodu çalıştırmak hak azaltmaz. Hakları yukarıdaki ödev kartından değiştirebilirsiniz.`));}const tabs=node('div','form-tabs');for(const code of ['A','B','C']){const b=node('button','',`Form ${code}`);b.type='button';b.classList.toggle('active',code===edit.variant);b.onclick=()=>{edit.variant=code;edit.question='Q1';render();};tabs.append(b);}wrap.append(tabs);const form=variant(hw,edit.variant);if(!form){wrap.append(node('div','error-box','Bu formun içerik verisi bulunamadı.'));view.append(wrap);return;}const fsummary=textarea(form.summary||'');fsummary.rows=2;fsummary.oninput=()=>{form.summary=fsummary.value;edit.dirty=true;};wrap.append(field(`Form ${edit.variant} hazırlama notu (öğretmene özel)`,fsummary));const qnav=node('div','question-nav');for(const q of form.questions){const b=node('button','',q.id);b.type='button';b.classList.toggle('active',q.id===edit.question);b.onclick=()=>{edit.question=q.id;render();};qnav.append(b);}wrap.append(qnav);const q=form.questions.find(x=>x.id===edit.question)||form.questions[0];if(q){edit.question=q.id;renderQuestion(wrap,q);}const bar=node('div','savebar');append(bar,button('Taslağı kaydet','',()=>act(saveDraft)),button('Onaylı içeriğe dön','subtle',()=>revertDraft()),button('İçeriği onayla','outline',()=>approveDraft()));const approveButton=bar.lastChild;approveButton.disabled=edit.dirty||a.revision===a.approvedRevision;bar.append(node('span','help',cloudClient?'İçerik onayı güncel soruları kaydeder; teslim ayarları, notların ve çözümlerin yayımı ayrıca yönetilir.':'İçerik onayı öğrenciler için yayımlama işlemi değildir.'));wrap.append(bar);view.append(wrap);}
 function renderQuestion(wrap,q){const box=node('div','question-box');const row=node('div','assignment-header'),head=node('div');append(head,node('p','eyebrow',q.type==='code'?'KOD SORUSU':'ÇOKTAN SEÇMELİ'),node('h2','',`${q.id} · ${q.title}`));append(row,head,node('span','fixed-points',`${q.points} puan · sabit`));box.append(row);const qtitle=input('text',q.title);qtitle.oninput=()=>{q.title=qtitle.value;edit.dirty=true;};box.append(field('Soru başlığı',qtitle));const prompt=textarea((q.prompt||[]).join('\n\n'),'prompt');prompt.oninput=()=>{q.prompt=prompt.value.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean);edit.dirty=true;};box.append(field('Soru metni (paragraflar arasında boş satır)',prompt));if(q.type==='code'){const starter=textarea(q.starter_code||'','code');starter.oninput=()=>{q.starter_code=starter.value;edit.dirty=true;};box.append(field('Öğrenciye verilen başlangıç kodu',starter));const details=node('details');details.append(node('summary','','Gelişmiş · örnek çözüm ve kontrol kodu'));const solution=textarea(q.solution_code||'','code');solution.oninput=()=>{q.solution_code=solution.value;edit.dirty=true;};details.append(field('Öğretmen örnek çözümü',solution));const checks=textarea(q.checks_code||'','code checks');checks.oninput=()=>{q.checks_code=checks.value;edit.dirty=true;};details.append(field('Kontrol kodu',checks));const checkState=node('div','help');const actions=node('div','actions');const run=button('Örnek çözümü kontrol et','outline',async()=>{run.disabled=true;cancel.disabled=false;checkState.textContent='Python ve PyTorch hazırlanıyor…';try{runner ||= new PythonRunner({onStatus:({message})=>{checkState.textContent=message;}});const result=await runner.grade(q.solution_code||'',q.checks_code||'');clear(checkState);if(result.infrastructure||result.cancelled){checkState.textContent=result.error||'Kontrol tamamlanamadı.';return;}checkState.append(node('p','',`Sonuç: ${result.score??0}/${result.total??q.points} puan${result.error?` · ${result.error}`:''}`));for(const x of result.checks||[])checkState.append(node('p',x.passed?'':'validation',`${x.passed?'✓':'×'} ${x.label}: ${x.detail}`));}catch(error){checkState.textContent=error?.message||String(error);}finally{run.disabled=false;cancel.disabled=true;}});const cancel=button('İptal','subtle',()=>runner?.cancel());cancel.disabled=true;append(actions,run,cancel);details.append(actions,checkState);box.append(details);box.append(node('p','help','Kod soruları toplam 70 puan. Kontrol sonucu taslağı onaylamak için otomatik karar vermez.'));}else{for(const item of q.items||[]){const group=node('div','choice-item');group.append(node('h4','',`${item.id} · ${item.points} puan`));const ip=textarea(item.prompt||'');ip.rows=2;ip.oninput=()=>{item.prompt=ip.value;edit.dirty=true;};group.append(field('Madde metni',ip));for(const opt of item.options||[]){const inp=input('text',opt.text||'');inp.oninput=()=>{opt.text=inp.value;edit.dirty=true;};const line=node('label','option-row');append(line,node('span','',opt.id),inp);group.append(line);}const correct=select([['','Seçin'],['A','A'],['B','B'],['C','C'],['D','D']],item.correct_option||item.correctOption||'');correct.onchange=()=>{item.correct_option=correct.value;edit.dirty=true;};group.append(field('Doğru seçenek',correct));const explanation=textarea(item.explanation||'');explanation.rows=2;explanation.oninput=()=>{item.explanation=explanation.value;edit.dirty=true;};group.append(field('Açıklama',explanation));box.append(group);}box.append(node('p','help','Çoktan seçmeli maddeler toplam 30 puan; her madde 5 puan.'));}wrap.append(box);}
 function revertDraft(){if(edit.dirty)return dirtyGuard(revertDraft);confirmDialog('Taslağı geri al','Bu ödevin kaydedilmiş taslak değişiklikleri son onaylı içerikle değiştirilecek. Sonuç kayıtları korunur.','Taslağı geri al',async()=>{await store.revertAssignment(edit.id);edit.draft=null;render();toast('Taslak son onaylı içeriğe döndü.');},'danger');}
 function approveDraft(){if(edit.dirty){toast('Önce taslağı kaydedin.',true);return;}const a=assignment(edit.id);if(a.revision===a.approvedRevision){toast('Onay bekleyen değişiklik yok.');return;}confirmDialog('İçeriği onayla',`${a.id} taslak sürüm ${a.revision} onaylı sürüm olarak saklanacak. ${cloudClient?'Güncel içerik öğrencilere açılır.':'İçeriği onaylar; yayımlamaz.'} Mevcut öğrenci sonuçları eski sürümleriyle korunur.`, 'İçeriği onayla',async()=>{await store.approveAssignment(edit.id);edit.draft=null;render();toast(cloudClient?'İçerik onaylandı; öğrenciler güncel sürüme erişebilir.':'İçerik onaylandı; yayımlanmadı.');});}

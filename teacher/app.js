@@ -5,7 +5,7 @@ import {downloadResultsWorkbook} from './results-xlsx.js';
 import {assignmentVariantGroups} from './assignment-variants.js';
 import {getCloudClient, requireCloudSession} from '../cloud-client.js';
 import {PythonRunner} from '../runner-client.js';
-import {formatDeadline, toDeadlineInput, fromDeadlineInput, assignmentAvailability} from './assignment-availability.js';
+import {formatDeadline, toDeadlineInput, fromDeadlineInput, assignmentAvailability, studentAssignmentAvailability} from './assignment-availability.js';
 import {guideContent, renderStudentGuide} from '../usage-guide.js';
 import {feedbackSettings, FEEDBACK_STATUSES} from './feedback-model.js';
 
@@ -51,8 +51,21 @@ async function ensureVariantMaps() {
   const missing=assignments().map(a=>store.getAssignmentVariantMap(term.id,a.id)).some(map=>!map);
   if(missing)await store.initializeAssignmentVariants(term.id);
 }
-function studentForms(student) {
-  return assignments().map(a=>`${a.id}: ${store.getAssignmentVariant(student.id,a.id)}`).join(' · ');
+function activeStudentAssignments(student, now=Date.now()) {
+  return assignments().filter(a=>studentAssignmentAvailability(store.state,student,a.id,{now}).isOpen);
+}
+function studentForms(student, active=activeStudentAssignments(student)) {
+  return active.map(a=>`${a.id}: ${store.getAssignmentVariant(student.id,a.id)}`).join(' · ') || 'Aktif ödev yok';
+}
+function updateStudentFormIndicators() {
+  const now=Date.now(), byId=new Map(store.state.students.map(s=>[s.id,s]));
+  for(const cell of document.querySelectorAll('[data-student-forms]')) {
+    const student=byId.get(cell.dataset.studentForms);
+    if(!student)continue;
+    const active=activeStudentAssignments(student,now),key=JSON.stringify(active.map(a=>a.id));
+    if(cell.dataset.homeworks===key)continue;
+    cell.textContent=studentForms(student,active);cell.dataset.homeworks=key;
+  }
 }
 function assignmentName(a) { return a?.draft?.title || a?.approved?.title || a?.id || 'Ödev'; }
 function variants(hw) { return hw?.variants || hw?.forms || []; }
@@ -290,12 +303,14 @@ function renderStudentTable(){
   const selectHead=node('th');const all=input('checkbox');all.setAttribute('aria-label','Görünen etkin öğrencilerin tümünü seç');
   const eligible=ss.filter(s=>s.active&&!currentTerm()?.archived);all.disabled=!eligible.length;all.checked=!!eligible.length&&eligible.every(s=>selectedStudentIds.has(s.id));
   all.onchange=()=>{for(const s of eligible){if(all.checked)selectedStudentIds.add(s.id);else selectedStudentIds.delete(s.id);}renderStudentTable();};selectHead.append(all);head.append(selectHead);
-  for(const label of ['Numara','Ad soyad','Ödev formları','Durum','İşlemler'])head.append(node('th','',label));
+  for(const label of ['Numara','Ad soyad','Aktif ödev / grup','Durum','İşlemler'])head.append(node('th','',label));
   const thead=node('thead');thead.append(head);table.append(thead);const body=node('tbody');
   for(const s of ss){const tr=node('tr'),selectCell=node('td'),check=input('checkbox');
     check.checked=selectedStudentIds.has(s.id);check.disabled=!s.active||!!currentTerm()?.archived;check.setAttribute('aria-label',`${s.number} ${s.name} öğrencisini seç`);
     check.onchange=()=>{if(check.checked)selectedStudentIds.add(s.id);else selectedStudentIds.delete(s.id);renderStudentTable();};selectCell.append(check);tr.append(selectCell);
-    for(const value of [s.number,s.name,studentForms(s)])tr.append(node('td','',value));
+    for(const value of [s.number,s.name])tr.append(node('td','',value));
+    const active=activeStudentAssignments(s),formsCell=node('td','',studentForms(s,active));
+    formsCell.dataset.studentForms=s.id;formsCell.dataset.homeworks=JSON.stringify(active.map(a=>a.id));tr.append(formsCell);
     const st=node('td');st.append(status(s.active?'Etkin':'Pasif',s.active?'':'muted'));tr.append(st);
     const cell=node('td'),row=node('div','row-actions');
     append(row,button('Düzenle','outline small',()=>studentDialog(s)),button(s.active?'Kaldır':'Geri al',s.active?'danger small':'subtle small',()=>confirmDialog(s.active?'Öğrenciyi kaldır':'Öğrenciyi geri al',`${s.name} (${s.number}) ${s.active?'pasif yapılacak':'yeniden etkin olacak'}. Sonuç kayıtları korunur.`,s.active?'Pasif yap':'Etkinleştir',async()=>{await store.setStudentActive(s.id,!s.active);selectedStudentIds.delete(s.id);render();toast('Öğrenci durumu güncellendi.');})));
@@ -425,6 +440,7 @@ function deliveryLabel(value){return ({active:'Aktif',inactive:'Kapalı',expired
 function deliveryToggleLabel(value){return value.isOpen?'Kapat':value.reason==='expired'?'Süreyi düzenle':'Aktif et';}
 function updateDeliveryIndicators(){
   if(!store?.state)return;
+  if(tab==='students')updateStudentFormIndicators();
   document.querySelectorAll('.delivery-box[data-homework]').forEach(box=>{
     const value=assignmentAvailability(store.state,termId(),box.dataset.homework);
     const badge=box.querySelector('[data-delivery-status]');badge.textContent=deliveryLabel(value);badge.classList.toggle('pending',!value.isOpen);
